@@ -23,10 +23,19 @@ class ConfigTests(unittest.TestCase):
                     artifact_name = "study-triage.ankiaddon"
                     include = ["__init__.py", "manifest.json"]
                     exclude = ["tests"]
+
+                    [tool.anki-addon-release.ankiweb]
+                    addon_id = "123456789"
+                    title = "Study Triage"
+                    description_file = "README.md"
+                    changelog_file = "CHANGELOG.md"
+                    profile_dir = ".browser-profile"
                     """
                 ).strip(),
                 encoding="utf-8",
             )
+            (root / "README.md").write_text("# Study Triage\n", encoding="utf-8")
+            (root / "CHANGELOG.md").write_text("## Next\n", encoding="utf-8")
 
             config = load_config(root)
 
@@ -35,8 +44,12 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.artifact_path, (root / "dist" / "study-triage.ankiaddon").resolve())
             self.assertEqual(config.include, ("__init__.py", "manifest.json"))
             self.assertEqual(config.exclude, ("tests",))
+            self.assertEqual(config.ankiweb.addon_id, "123456789")
+            self.assertEqual(config.ankiweb.title, "Study Triage")
+            self.assertEqual(config.ankiweb.description_file, (root / "README.md").resolve())
+            self.assertEqual(config.ankiweb.changelog_file, (root / "CHANGELOG.md").resolve())
+            self.assertEqual(config.ankiweb.profile_dir, (root / ".browser-profile").resolve())
 
 
 if __name__ == "__main__":
     unittest.main()
-

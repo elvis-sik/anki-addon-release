@@ -22,6 +22,11 @@ classifiers = [
   "Topic :: Software Development :: Build Tools",
 ]
 
+[project.optional-dependencies]
+browser = [
+  "playwright>=1.44",
+]
+
 [project.scripts]
 anki-addon-release = "anki_addon_release.cli:main"
 
@@ -33,4 +38,3 @@ exclude-newer = "7 days"
 
 [tool.uv.pip]
 exclude-newer = "7 days"
-

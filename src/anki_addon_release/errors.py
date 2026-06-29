@@ -13,3 +13,6 @@ class ManifestError(ReleaseError):
 class PackageError(ReleaseError):
     """Raised when packaging cannot complete safely."""
 
+
+class PublishError(ReleaseError):
+    """Raised when an AnkiWeb publishing flow cannot complete safely."""

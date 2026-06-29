@@ -26,6 +26,19 @@ DEFAULT_EXCLUDE = (
 
 
 @dataclass(frozen=True)
+class AnkiWebConfig:
+    base_url: str = "https://ankiweb.net"
+    addon_id: str | None = None
+    title: str | None = None
+    description: str | None = None
+    description_file: Path | None = None
+    changelog: str | None = None
+    changelog_file: Path | None = None
+    profile_dir: Path | None = None
+    upload_path: str = "/shared/addons"
+
+
+@dataclass(frozen=True)
 class ReleaseConfig:
     project_root: Path
     source_dir: Path
@@ -34,6 +47,7 @@ class ReleaseConfig:
     artifact_name: str | None = None
     include: tuple[str, ...] = field(default_factory=tuple)
     exclude: tuple[str, ...] = field(default_factory=lambda: DEFAULT_EXCLUDE)
+    ankiweb: AnkiWebConfig = field(default_factory=AnkiWebConfig)
 
     @property
     def artifact_path(self) -> Path:
@@ -68,6 +82,7 @@ def load_config(project_root: Path, config_file: str = "pyproject.toml") -> Rele
 
     include = _string_list(table, "include", default=())
     exclude = _string_list(table, "exclude", default=DEFAULT_EXCLUDE)
+    ankiweb = _ankiweb_config(root, table.get("ankiweb"))
 
     return ReleaseConfig(
         project_root=root,
@@ -77,6 +92,37 @@ def load_config(project_root: Path, config_file: str = "pyproject.toml") -> Rele
         artifact_name=artifact_name,
         include=include,
         exclude=exclude,
+        ankiweb=ankiweb,
+    )
+
+
+def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
+    if raw is None:
+        return AnkiWebConfig()
+    if not isinstance(raw, dict):
+        raise ConfigError("ankiweb must be a table")
+
+    base_url = _optional_string(raw, "base_url") or "https://ankiweb.net"
+    addon_id = _optional_string(raw, "addon_id")
+    title = _optional_string(raw, "title")
+    description = _optional_string(raw, "description")
+    changelog = _optional_string(raw, "changelog")
+    upload_path = _optional_string(raw, "upload_path") or "/shared/addons"
+
+    description_file = _optional_path(root, raw, "description_file")
+    changelog_file = _optional_path(root, raw, "changelog_file")
+    profile_dir = _optional_path(root, raw, "profile_dir")
+
+    return AnkiWebConfig(
+        base_url=base_url.rstrip("/"),
+        addon_id=addon_id,
+        title=title,
+        description=description,
+        description_file=description_file,
+        changelog=changelog,
+        changelog_file=changelog_file,
+        profile_dir=profile_dir,
+        upload_path=_normalize_path(upload_path),
     )
 
 
@@ -101,6 +147,33 @@ def _path_from_string(
     return path.resolve()
 
 
+def _optional_path(root: Path, table: dict[str, object], key: str) -> Path | None:
+    raw = table.get(key)
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ConfigError(f"ankiweb.{key} must be a string")
+    path = Path(raw)
+    if not path.is_absolute():
+        path = root / path
+    return path.resolve()
+
+
+def _optional_string(table: dict[str, object], key: str) -> str | None:
+    raw = table.get(key)
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ConfigError(f"ankiweb.{key} must be a string")
+    return raw
+
+
+def _normalize_path(path: str) -> str:
+    if not path.startswith("/"):
+        return f"/{path}"
+    return path
+
+
 def _string_list(
     table: dict[str, object],
     key: str,
@@ -113,4 +186,3 @@ def _string_list(
     if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
         raise ConfigError(f"{key} must be a list of strings")
     return tuple(raw)
-

@@ -7,6 +7,7 @@ import sys
 from .config import load_config
 from .browser import AnkiWebBrowser
 from .errors import ReleaseError
+from .handoff import write_handoff
 from .manifest import load_manifest
 from .packager import build_plan, inspect_archive, write_package
 from .publish import build_publish_plan, default_profile_dir, describe_publish_plan
@@ -67,6 +68,20 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("--submit", action="store_true", help="click the final submit button")
     _add_browser_args(publish)
     publish.set_defaults(func=_publish)
+
+    handoff = subparsers.add_parser(
+        "handoff",
+        help="build a release bundle for Codex or a human using a regular browser",
+    )
+    handoff.add_argument(
+        "--mode",
+        choices=("auto", "create", "update"),
+        default="auto",
+        help="handoff flow to describe; auto uses update when ankiweb.addon_id is configured",
+    )
+    handoff.add_argument("--base-url", help="override AnkiWeb base URL")
+    handoff.add_argument("--out-dir", type=Path, help="handoff output directory")
+    handoff.set_defaults(func=_handoff)
 
     return parser
 
@@ -155,6 +170,36 @@ def _publish(args: argparse.Namespace) -> int:
         print(f"screenshot: {result.screenshot}")
     if not args.submit:
         print("final submit was not clicked; rerun with --submit when ready")
+    return 0
+
+
+def _handoff(args: argparse.Namespace) -> int:
+    config = load_config(args.project, args.config)
+    manifest = load_manifest(config.manifest)
+    package_plan = build_plan(config)
+    artifact = write_package(package_plan)
+    archive_entries = inspect_archive(artifact)
+    publish_plan = build_publish_plan(
+        config,
+        manifest,
+        mode=args.mode,
+        artifact_path=artifact,
+        base_url=args.base_url or None,
+        submit=False,
+    )
+    out_dir = args.out_dir or (config.project_root / ".anki-addon-release" / "handoff")
+    result = write_handoff(
+        config=config,
+        manifest=manifest,
+        publish_plan=publish_plan,
+        archive_entries=archive_entries,
+        out_dir=out_dir,
+    )
+
+    print(f"artifact: {artifact}")
+    print(f"handoff_dir: {result.out_dir}")
+    for path in result.files:
+        print(f"wrote: {path}")
     return 0
 
 

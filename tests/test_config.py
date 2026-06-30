@@ -30,6 +30,8 @@ class ConfigTests(unittest.TestCase):
                     description_file = "README.md"
                     changelog_file = "CHANGELOG.md"
                     profile_dir = ".browser-profile"
+                    login_email_env = "ANKIWEB_EMAIL"
+                    login_password_env = "ANKIWEB_PASSWORD"
                     """
                 ).strip(),
                 encoding="utf-8",
@@ -49,6 +51,8 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.ankiweb.description_file, (root / "README.md").resolve())
             self.assertEqual(config.ankiweb.changelog_file, (root / "CHANGELOG.md").resolve())
             self.assertEqual(config.ankiweb.profile_dir, (root / ".browser-profile").resolve())
+            self.assertEqual(config.ankiweb.login_email_env, "ANKIWEB_EMAIL")
+            self.assertEqual(config.ankiweb.login_password_env, "ANKIWEB_PASSWORD")
 
 
 if __name__ == "__main__":

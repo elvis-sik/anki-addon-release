@@ -37,6 +37,44 @@ python -m playwright install chromium
 
 Use `sfw` when installing from public registries in this workspace.
 
+### Credentials
+
+The framework never calls 1Password, reads password-manager references, or stores
+AnkiWeb credentials in config. If you want automated login, resolve secrets
+outside the process and expose plain environment variables only for the command
+that needs them:
+
+```bash
+export ANKIWEB_EMAIL="$(op read op://Private/AnkiWeb/email)"
+export ANKIWEB_PASSWORD="$(op read op://Private/AnkiWeb/password)"
+```
+
+Then reference the variable names in project config:
+
+```toml
+[tool.anki-addon-release.ankiweb]
+login_email_env = "ANKIWEB_EMAIL"
+login_password_env = "ANKIWEB_PASSWORD"
+```
+
+or pass them on the command line:
+
+```bash
+anki-addon-release login \
+  --email-env ANKIWEB_EMAIL \
+  --password-env ANKIWEB_PASSWORD \
+  --submit-login
+```
+
+Without `--submit-login`, the login command fills the fields and leaves the form
+for review. In `--headless` mode, `--submit-login` is required.
+
+### Separate Publishing Account
+
+For real publishing, prefer a dedicated AnkiWeb account used only for add-ons.
+That keeps release automation isolated from your personal synced collection and
+makes it easier to reason about which account a browser profile is logged into.
+
 From GitHub, `uv` can run or install the package without a PyPI release once the
 repository is public or otherwise accessible to the local Git credentials:
 
@@ -74,6 +112,8 @@ addon_id = "1234567890"
 title = "Study Triage"
 description_file = "README.md"
 changelog_file = "CHANGELOG.md"
+login_email_env = "ANKIWEB_EMAIL"
+login_password_env = "ANKIWEB_PASSWORD"
 ```
 
 `include` is optional. When omitted, the whole `source_dir` is considered and `exclude` filters out development files.
@@ -131,6 +171,9 @@ anki-addon-release publish --submit --diagnostics-dir out/release-diagnostics
 
 Use `--mode create` for first-publish testing and `--mode update` for updating a configured `addon_id`. `--mode auto` uses update when `ankiweb.addon_id` is present and create otherwise.
 
+The final AnkiWeb save/submit button is not clicked unless `--submit` is passed.
+That review-first behavior is the default.
+
 Without installation, from this repository:
 
 ```bash
@@ -161,6 +204,6 @@ Those tests exercise separate create and update forms against a local HTTP serve
 
 - Use the handoff bundle to publish Study Triage through regular Chrome.
 - Capture the first published add-on id in Study Triage's release config.
-- Decide whether the Playwright driver is still worthwhile after the regular-browser path works.
+- Calibrate the Playwright driver against the real AnkiWeb branch upload form.
 - Add saved HTML/screenshot diagnostics on every browser failure.
 - Add public artifact verification by downloading/installing the published add-on into a disposable Anki profile, likely composed with `anki-addon-workbench`.

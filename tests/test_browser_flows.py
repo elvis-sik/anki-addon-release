@@ -8,6 +8,7 @@ from threading import Thread
 import unittest
 
 from anki_addon_release.browser import AnkiWebBrowser, playwright_available
+from anki_addon_release.credentials import LoginCredentials
 from anki_addon_release.publish import PublishPlan
 
 
@@ -19,6 +20,23 @@ RUN_BROWSER_TESTS = os.environ.get("ANKI_ADDON_RELEASE_BROWSER_TESTS") == "1"
     "set ANKI_ADDON_RELEASE_BROWSER_TESTS=1 with playwright installed to run browser flows",
 )
 class BrowserFlowTests(unittest.TestCase):
+    def test_login_flow_fills_and_submits_credentials(self) -> None:
+        with FakeAnkiWebServer() as server, tempfile.TemporaryDirectory() as tmp:
+            result = AnkiWebBrowser(
+                profile_dir=Path(tmp) / "profile",
+                headless=True,
+                timeout_ms=10_000,
+            ).login(
+                f"{server.url}/account/login",
+                credentials=LoginCredentials(email="user@example.com", password="secret"),
+                submit=True,
+            )
+
+            self.assertEqual(result.status, "login-submitted")
+            self.assertEqual(server.last_post_path, "/account/login")
+            self.assertIn(b"user%40example.com", server.last_post_body)
+            self.assertIn(b"secret", server.last_post_body)
+
     def test_create_flow_uploads_artifact_and_metadata(self) -> None:
         with FakeAnkiWebServer() as server, tempfile.TemporaryDirectory() as tmp:
             artifact = _artifact(Path(tmp))
@@ -91,7 +109,7 @@ class FakeAnkiWebServer:
                 elif handler.path == "/shared/addons/update":
                     body = _update_form()
                 elif handler.path == "/account/login":
-                    body = b"<html><body>login</body></html>"
+                    body = _login_form()
                 else:
                     body = b"<html><body><a href='/shared/addons/create'>Upload</a></body></html>"
                 handler.send_response(200)
@@ -133,6 +151,18 @@ def _artifact(root: Path) -> Path:
     return path
 
 
+def _login_form() -> bytes:
+    return b"""
+    <html><body>
+      <form method="post" action="/account/login">
+        <input type="email" name="email">
+        <input type="password" name="password">
+        <button type="submit">Log In</button>
+      </form>
+    </body></html>
+    """
+
+
 def _create_form() -> bytes:
     return b"""
     <html><body>
@@ -162,4 +192,3 @@ def _update_form() -> bytes:
 
 if __name__ == "__main__":
     unittest.main()
-

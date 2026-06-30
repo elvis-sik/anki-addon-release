@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 
 from .errors import PublishError
+from .credentials import LoginCredentials
 from .publish import PublishPlan
 
 
@@ -39,7 +40,16 @@ class AnkiWebBrowser:
         self.slow_mo_ms = slow_mo_ms
         self.diagnostics_dir = diagnostics_dir
 
-    def login(self, login_url: str) -> BrowserPublishResult:
+    def login(
+        self,
+        login_url: str,
+        *,
+        credentials: LoginCredentials | None = None,
+        submit: bool = False,
+    ) -> BrowserPublishResult:
+        if self.headless and (credentials is None or not submit):
+            raise PublishError("headless login requires credentials and --submit-login")
+
         sync_playwright = _sync_playwright()
         with sync_playwright() as playwright:
             context = None
@@ -53,7 +63,15 @@ class AnkiWebBrowser:
                 page = context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 page.goto(login_url)
-                if not self.headless:
+                status = "login-opened"
+                if credentials is not None:
+                    _fill_login_form(page, credentials)
+                    status = "login-filled"
+                    if submit:
+                        _click_login_submit(page)
+                        page.wait_for_load_state("networkidle")
+                        status = "login-submitted"
+                elif not self.headless:
                     input("Complete AnkiWeb login in the browser, then press Enter here to continue: ")
                 screenshot = self._screenshot(page, "login")
                 final_url = page.url
@@ -62,7 +80,7 @@ class AnkiWebBrowser:
             finally:
                 if context is not None:
                     context.close()
-        return BrowserPublishResult(status="login-opened", final_url=final_url, screenshot=screenshot)
+        return BrowserPublishResult(status=status, final_url=final_url, screenshot=screenshot)
 
     def publish(self, plan: PublishPlan) -> BrowserPublishResult:
         if not plan.artifact_path.exists():
@@ -154,6 +172,12 @@ def _ensure_upload_form(page: object) -> None:
     if _file_input_count(page) > 0:
         return
 
+    add_branch_button = page.get_by_role("button", name=re.compile("add new branch", re.IGNORECASE))
+    if _count(add_branch_button) > 0:
+        add_branch_button.first.click()
+        if _file_input_count(page) > 0:
+            return
+
     upload_link = page.get_by_role("link", name=re.compile("upload", re.IGNORECASE))
     upload_button = page.get_by_role("button", name=re.compile("upload", re.IGNORECASE))
     for locator in (upload_link, upload_button):
@@ -164,6 +188,27 @@ def _ensure_upload_form(page: object) -> None:
                 return
 
     raise PublishError("could not find an upload form or upload button")
+
+
+def _fill_login_form(page: object, credentials: LoginCredentials) -> None:
+    if not _fill_optional_text(page, _EMAIL_CANDIDATES, credentials.email):
+        raise PublishError("could not find login email field")
+    if not _fill_optional_text(page, _PASSWORD_CANDIDATES, credentials.password):
+        raise PublishError("could not find login password field")
+
+
+def _click_login_submit(page: object) -> None:
+    button = page.get_by_role("button", name=re.compile("log in|login|sign in", re.IGNORECASE))
+    if _count(button) > 0:
+        button.first.click()
+        return
+
+    submit = page.locator('button[type="submit"], input[type="submit"]').first
+    if _count(submit) > 0:
+        submit.click()
+        return
+
+    raise PublishError("could not find login submit button")
 
 
 def _fill_form(page: object, plan: PublishPlan) -> None:
@@ -235,4 +280,17 @@ _ADDON_ID_CANDIDATES = (
     'input[name="addon_id"]',
     'input[name="id"]',
     'input[id*="addon" i]',
+)
+_EMAIL_CANDIDATES = (
+    'input[type="email"]',
+    'input[name="email"]',
+    'input[name="username"]',
+    'input[autocomplete="username"]',
+    'input[id*="email" i]',
+)
+_PASSWORD_CANDIDATES = (
+    'input[type="password"]',
+    'input[name="password"]',
+    'input[autocomplete="current-password"]',
+    'input[id*="password" i]',
 )

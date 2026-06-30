@@ -36,6 +36,8 @@ class AnkiWebConfig:
     changelog_file: Path | None = None
     profile_dir: Path | None = None
     upload_path: str = "/shared/addons"
+    login_email_env: str | None = None
+    login_password_env: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,8 @@ def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
     description = _optional_string(raw, "description")
     changelog = _optional_string(raw, "changelog")
     upload_path = _optional_string(raw, "upload_path") or "/shared/addons"
+    login_email_env = _optional_string(raw, "login_email_env")
+    login_password_env = _optional_string(raw, "login_password_env")
 
     description_file = _optional_path(root, raw, "description_file")
     changelog_file = _optional_path(root, raw, "changelog_file")
@@ -123,6 +127,8 @@ def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
         changelog_file=changelog_file,
         profile_dir=profile_dir,
         upload_path=_normalize_path(upload_path),
+        login_email_env=login_email_env,
+        login_password_env=login_password_env,
     )
 
 

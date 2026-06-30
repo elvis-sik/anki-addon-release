@@ -6,6 +6,7 @@ import sys
 
 from .config import load_config
 from .browser import AnkiWebBrowser
+from .credentials import resolve_env_credentials
 from .errors import ReleaseError
 from .handoff import write_handoff
 from .manifest import load_manifest
@@ -53,6 +54,9 @@ def _parser() -> argparse.ArgumentParser:
 
     login = subparsers.add_parser("login", help="open AnkiWeb login in a persistent browser profile")
     login.add_argument("--base-url", help="override AnkiWeb base URL")
+    login.add_argument("--email-env", help="environment variable containing the AnkiWeb email")
+    login.add_argument("--password-env", help="environment variable containing the AnkiWeb password")
+    login.add_argument("--submit-login", action="store_true", help="submit the login form after filling it")
     _add_browser_args(login)
     login.set_defaults(func=_login)
 
@@ -131,8 +135,12 @@ def _login(args: argparse.Namespace) -> int:
     config = load_config(args.project, args.config)
     manifest = load_manifest(config.manifest)
     plan = build_publish_plan(config, manifest, base_url=args.base_url or None)
+    credentials = resolve_env_credentials(
+        email_env=args.email_env or config.ankiweb.login_email_env,
+        password_env=args.password_env or config.ankiweb.login_password_env,
+    )
     browser = _browser(args, config)
-    result = browser.login(plan.login_url)
+    result = browser.login(plan.login_url, credentials=credentials, submit=args.submit_login)
     print(f"status: {result.status}")
     print(f"final_url: {result.final_url}")
     if result.screenshot:

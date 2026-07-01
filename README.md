@@ -74,6 +74,8 @@ for review. In `--headless` mode, `--submit-login` is required.
 For real publishing, prefer a dedicated AnkiWeb account used only for add-ons.
 That keeps release automation isolated from your personal synced collection and
 makes it easier to reason about which account a browser profile is logged into.
+AnkiWeb may prevent very new accounts from publishing shared add-ons, so create
+the publishing account before you need it or use an older dedicated account.
 
 From GitHub, `uv` can run or install the package without a PyPI release once the
 repository is public or otherwise accessible to the local Git credentials:
@@ -172,7 +174,8 @@ anki-addon-release publish --submit --diagnostics-dir out/release-diagnostics
 Use `--mode create` for first-publish testing and `--mode update` for updating a configured `addon_id`. `--mode auto` uses update when `ankiweb.addon_id` is present and create otherwise.
 
 The final AnkiWeb save/submit button is not clicked unless `--submit` is passed.
-That review-first behavior is the default.
+That review-first behavior is the default. In headed browser mode, the prepared
+form stays open until you press Enter in the terminal.
 
 Without installation, from this repository:
 

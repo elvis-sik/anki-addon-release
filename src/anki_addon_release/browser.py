@@ -63,6 +63,7 @@ class AnkiWebBrowser:
                 page = context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 page.goto(login_url)
+                _wait_for_frontend(page)
                 status = "login-opened"
                 if credentials is not None:
                     _fill_login_form(page, credentials)
@@ -99,6 +100,8 @@ class AnkiWebBrowser:
                 page = context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 page.goto(plan.upload_url)
+                _wait_for_frontend(page)
+                _raise_known_publish_blockers(page)
 
                 _ensure_upload_form(page)
                 _fill_form(page, plan)
@@ -112,6 +115,8 @@ class AnkiWebBrowser:
 
                 screenshot = self._screenshot(page, f"publish-{plan.mode}-{status}")
                 final_url = page.url
+                if not plan.submit and not self.headless:
+                    input("Review AnkiWeb form in the browser, then press Enter here to close: ")
             except Exception as exc:
                 raise self._failure(
                     "browser publish failed",
@@ -169,12 +174,15 @@ def _sync_playwright() -> object:
 
 
 def _ensure_upload_form(page: object) -> None:
+    _raise_known_publish_blockers(page)
+
     if _file_input_count(page) > 0:
         return
 
     add_branch_button = page.get_by_role("button", name=re.compile("add new branch", re.IGNORECASE))
     if _count(add_branch_button) > 0:
         add_branch_button.first.click()
+        _raise_known_publish_blockers(page)
         if _file_input_count(page) > 0:
             return
 
@@ -184,16 +192,40 @@ def _ensure_upload_form(page: object) -> None:
         if _count(locator) > 0:
             locator.first.click()
             page.wait_for_load_state("domcontentloaded")
+            _raise_known_publish_blockers(page)
             if _file_input_count(page) > 0:
                 return
 
+    _raise_known_publish_blockers(page)
     raise PublishError("could not find an upload form or upload button")
 
 
+def _raise_known_publish_blockers(page: object) -> None:
+    try:
+        title = page.title()
+        body = page.locator("body").inner_text(timeout=1_000)
+    except Exception:
+        return
+
+    content = f"{title}\n{body}".lower()
+    if "account is too new" in content:
+        raise PublishError(
+            "AnkiWeb refused publishing because this account is too new; "
+            "use an older dedicated publishing account or wait until AnkiWeb allows sharing"
+        )
+
+
+def _wait_for_frontend(page: object) -> None:
+    try:
+        page.wait_for_load_state("networkidle")
+    except Exception:
+        pass
+
+
 def _fill_login_form(page: object, credentials: LoginCredentials) -> None:
-    if not _fill_optional_text(page, _EMAIL_CANDIDATES, credentials.email):
+    if not _fill_text_after_wait(page, _EMAIL_CANDIDATES, credentials.email):
         raise PublishError("could not find login email field")
-    if not _fill_optional_text(page, _PASSWORD_CANDIDATES, credentials.password):
+    if not _fill_text_after_wait(page, _PASSWORD_CANDIDATES, credentials.password):
         raise PublishError("could not find login password field")
 
 
@@ -245,6 +277,16 @@ def _fill_optional_text(page: object, candidates: tuple[str, ...], value: str) -
             locator.first.fill(value)
             return True
     return False
+
+
+def _fill_text_after_wait(page: object, candidates: tuple[str, ...], value: str) -> bool:
+    locator = page.locator(", ".join(candidates)).first
+    try:
+        locator.wait_for(state="visible")
+        locator.fill(value)
+        return True
+    except Exception:
+        return _fill_optional_text(page, candidates, value)
 
 
 def _file_input_count(page: object) -> int:

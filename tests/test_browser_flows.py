@@ -9,6 +9,7 @@ import unittest
 
 from anki_addon_release.browser import AnkiWebBrowser, playwright_available
 from anki_addon_release.credentials import LoginCredentials
+from anki_addon_release.errors import PublishError
 from anki_addon_release.publish import PublishPlan
 
 
@@ -94,6 +95,29 @@ class BrowserFlowTests(unittest.TestCase):
             self.assertIn(b"Bug fixes", server.last_post_body)
             self.assertIn(b"fake addon", server.last_post_body)
 
+    def test_account_too_new_blocker_is_reported(self) -> None:
+        with FakeAnkiWebServer() as server, tempfile.TemporaryDirectory() as tmp:
+            artifact = _artifact(Path(tmp))
+            plan = PublishPlan(
+                mode="create",
+                base_url=server.url,
+                upload_url=f"{server.url}/shared/addons/too-new",
+                login_url=f"{server.url}/account/login",
+                artifact_path=artifact,
+                addon_id=None,
+                title="Study Triage",
+                description="Description text",
+                changelog=None,
+                submit=False,
+            )
+
+            with self.assertRaisesRegex(PublishError, "account is too new"):
+                AnkiWebBrowser(
+                    profile_dir=Path(tmp) / "profile",
+                    headless=True,
+                    timeout_ms=10_000,
+                ).publish(plan)
+
 
 class FakeAnkiWebServer:
     def __enter__(self) -> FakeAnkiWebServer:
@@ -108,6 +132,8 @@ class FakeAnkiWebServer:
                     body = _create_form()
                 elif handler.path == "/shared/addons/update":
                     body = _update_form()
+                elif handler.path == "/shared/addons/too-new":
+                    body = _account_too_new_page()
                 elif handler.path == "/account/login":
                     body = _login_form()
                 else:
@@ -187,6 +213,16 @@ def _update_form() -> bytes:
         <button type="submit">Save</button>
       </form>
     </body></html>
+    """
+
+
+def _account_too_new_page() -> bytes:
+    return b"""
+    <html><head><title>Account Too New - AnkiWeb</title></head>
+      <body>
+        <h4>Sorry, your account is too new for this action.</h4>
+      </body>
+    </html>
     """
 
 

@@ -72,10 +72,26 @@ for review. In `--headless` mode, `--submit-login` is required.
 ### Separate Publishing Account
 
 For real publishing, prefer a dedicated AnkiWeb account used only for add-ons.
-That keeps release automation isolated from your personal synced collection and
-makes it easier to reason about which account a browser profile is logged into.
-AnkiWeb may prevent very new accounts from publishing shared add-ons, so create
-the publishing account before you need it or use an older dedicated account.
+This is an isolation pattern, not a framework requirement: it keeps release
+automation separate from your personal synced collection and makes it easier to
+reason about which account a browser profile is logged into.
+
+Two AnkiWeb account lifecycle rules matter for that pattern:
+
+- New-account publishing guard: AnkiWeb may send very new accounts to its
+  [Account Too New](https://ankiweb.net/shared/too-new) page when they try to
+  share add-ons. That public page says new accounts must meet certain criteria
+  and can continue once the account is older, but it does not publish an exact
+  wait period. Create the publishing account before you need it, or use an
+  older dedicated account.
+- Inactivity expiry: AnkiWeb's
+  [terms](https://ankiweb.net/account/terms) and
+  [account-removal article](https://anki.tenderapp.com/kb/anki-ecosystem/ankiweb-account-removal)
+  say account data may be deleted if the account is not accessed or synced in
+  the last 6 months. Log in to the dedicated account at least every few months
+  to keep it active. The account-removal article notes that shared add-ons are
+  not subject to the usual data expiry, but keeping the publishing account
+  active avoids losing account access or release ownership context.
 
 From GitHub, `uv` can run or install the package without a PyPI release once the
 repository is public or otherwise accessible to the local Git credentials:

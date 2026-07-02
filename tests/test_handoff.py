@@ -36,7 +36,7 @@ class HandoffTests(unittest.TestCase):
                 artifact_path=root / "dist" / "study-triage.ankiaddon",
                 addon_id=None,
                 title="Study Triage",
-                support_url="https://github.com/elvis-sik/anki-zero-today-new",
+                support_url="https://github.com/elvis-sik/study-triage",
                 description="Description text",
                 changelog="Change text",
                 submit=False,
@@ -63,7 +63,7 @@ class HandoffTests(unittest.TestCase):
             metadata = json.loads((out_dir / "release-handoff.json").read_text(encoding="utf-8"))
             self.assertEqual(metadata["mode"], "create")
             self.assertEqual(metadata["title"], "Study Triage")
-            self.assertEqual(metadata["support_url"], "https://github.com/elvis-sik/anki-zero-today-new")
+            self.assertEqual(metadata["support_url"], "https://github.com/elvis-sik/study-triage")
             self.assertTrue(metadata["safety"]["final_submit_requires_confirmation"])
             self.assertTrue(metadata["safety"]["record_addon_id_after_create"])
 

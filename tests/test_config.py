@@ -27,7 +27,7 @@ class ConfigTests(unittest.TestCase):
                     [tool.anki-addon-release.ankiweb]
                     addon_id = "123456789"
                     title = "Study Triage"
-                    support_url = "https://github.com/elvis-sik/anki-zero-today-new"
+                    support_url = "https://github.com/elvis-sik/study-triage"
                     description_file = "README.md"
                     changelog_file = "CHANGELOG.md"
                     profile_dir = ".browser-profile"
@@ -49,7 +49,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.exclude, ("tests",))
             self.assertEqual(config.ankiweb.addon_id, "123456789")
             self.assertEqual(config.ankiweb.title, "Study Triage")
-            self.assertEqual(config.ankiweb.support_url, "https://github.com/elvis-sik/anki-zero-today-new")
+            self.assertEqual(config.ankiweb.support_url, "https://github.com/elvis-sik/study-triage")
             self.assertEqual(config.ankiweb.description_file, (root / "README.md").resolve())
             self.assertEqual(config.ankiweb.changelog_file, (root / "CHANGELOG.md").resolve())
             self.assertEqual(config.ankiweb.profile_dir, (root / ".browser-profile").resolve())

@@ -326,9 +326,9 @@ def _pause_for_review() -> None:
 def _fill_version_range(page: object, min_version: str | None, max_version: str | None) -> None:
     version_inputs = page.locator('input[maxlength="9"]')
     if min_version is not None and _count(version_inputs) >= 1:
-        version_inputs.nth(0).fill(min_version)
+        _fill_locator(version_inputs.nth(0), min_version)
     if max_version is not None and _count(version_inputs) >= 2:
-        version_inputs.nth(1).fill(max_version)
+        _fill_locator(version_inputs.nth(1), max_version)
 
 
 def _click_submit(page: object) -> None:
@@ -349,16 +349,24 @@ def _fill_optional_text(page: object, candidates: tuple[str, ...], value: str) -
     for selector in candidates:
         locator = page.locator(selector)
         if _count(locator) > 0:
-            locator.first.fill(value)
+            _fill_locator(locator.first, value)
             return True
     return False
+
+
+def _fill_locator(locator: object, value: str) -> None:
+    locator.fill(value)
+    try:
+        locator.evaluate("(element) => element.dispatchEvent(new Event('change', { bubbles: true }))")
+    except Exception:
+        pass
 
 
 def _fill_text_after_wait(page: object, candidates: tuple[str, ...], value: str) -> bool:
     locator = page.locator(", ".join(candidates)).first
     try:
         locator.wait_for(state="visible")
-        locator.fill(value)
+        _fill_locator(locator, value)
         return True
     except Exception:
         return _fill_optional_text(page, candidates, value)

@@ -118,9 +118,10 @@ class BrowserFlowTests(unittest.TestCase):
 
             self.assertEqual(result.status, "submitted")
             self.assertEqual(server.last_post_path, "/shared/addons/update")
+            self.assertEqual(server.post_paths, ["/shared/addons/update", "/shared/addons/update"])
+            self.assertIn(b"fake addon", server.post_bodies[0])
             self.assertIn(b"123456789", server.last_post_body)
             self.assertIn(b"Bug fixes", server.last_post_body)
-            self.assertIn(b"fake addon", server.last_post_body)
 
     def test_account_too_new_blocker_is_reported(self) -> None:
         with FakeAnkiWebServer() as server, tempfile.TemporaryDirectory() as tmp:
@@ -154,6 +155,8 @@ class FakeAnkiWebServer:
     def __enter__(self) -> FakeAnkiWebServer:
         self.last_post_path = ""
         self.last_post_body = b""
+        self.post_paths = []
+        self.post_bodies = []
         self.login_get_count = 0
         self.logout_get_count = 0
 
@@ -187,7 +190,9 @@ class FakeAnkiWebServer:
             def do_POST(handler) -> None:
                 length = int(handler.headers.get("Content-Length", "0"))
                 owner.last_post_path = handler.path
+                owner.post_paths.append(handler.path)
                 owner.last_post_body = handler.rfile.read(length)
+                owner.post_bodies.append(owner.last_post_body)
                 body = _logged_in_page()
                 handler.send_response(200)
                 handler.send_header("Content-Type", "text/html; charset=utf-8")

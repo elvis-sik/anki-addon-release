@@ -110,11 +110,13 @@ class AnkiWebBrowser:
                 _raise_known_publish_blockers(page)
 
                 _ensure_upload_form(page)
-                _fill_form(page, plan)
+                _fill_form(page, plan, include_artifact=True)
 
                 if plan.submit:
                     _click_submit(page)
                     page.wait_for_load_state("networkidle")
+                    if plan.mode == "update":
+                        _save_update_metadata(page, plan)
                     status = "submitted"
                 else:
                     status = "prepared"
@@ -300,9 +302,10 @@ def _click_login_submit(page: object) -> None:
     raise PublishError("could not find login submit button")
 
 
-def _fill_form(page: object, plan: PublishPlan) -> None:
-    file_input = page.locator('input[type="file"]').first
-    file_input.set_input_files(str(plan.artifact_path))
+def _fill_form(page: object, plan: PublishPlan, *, include_artifact: bool) -> None:
+    if include_artifact:
+        file_input = page.locator('input[type="file"]').first
+        file_input.set_input_files(str(plan.artifact_path))
 
     _fill_optional_text(page, _TITLE_CANDIDATES, plan.title)
     if plan.support_url is not None:
@@ -314,6 +317,15 @@ def _fill_form(page: object, plan: PublishPlan) -> None:
         _fill_optional_text(page, _CHANGELOG_CANDIDATES, plan.changelog)
     if plan.addon_id is not None:
         _fill_optional_text(page, _ADDON_ID_CANDIDATES, plan.addon_id)
+
+
+def _save_update_metadata(page: object, plan: PublishPlan) -> None:
+    page.goto(plan.upload_url)
+    _wait_for_frontend(page)
+    _ensure_upload_form(page)
+    _fill_form(page, plan, include_artifact=False)
+    _click_submit(page)
+    page.wait_for_load_state("networkidle")
 
 
 def _pause_for_review() -> None:

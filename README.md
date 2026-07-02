@@ -22,8 +22,7 @@ Early public release. It has been dogfooded against the
 [Study Triage](https://ankiweb.net/shared/info/1850611434) add-on release flow,
 including AnkiWeb login, create/update form filling, support URL filling,
 branch compatibility fields, and local browser-flow regression tests.
-The first PyPI upload is pending a configured PyPI token or trusted-publishing
-environment.
+The first PyPI upload is pending the one-time PyPI Trusted Publishing setup.
 
 ## Install
 
@@ -249,6 +248,28 @@ make test-browser
 ```
 
 Those tests exercise separate create and update forms against a local HTTP server and verify that Playwright uploads the `.ankiaddon` artifact plus the expected metadata.
+
+## Releasing
+
+Releases publish to PyPI via GitHub Actions using **Trusted Publishing** (OIDC);
+no API token is stored. To cut a release:
+
+```bash
+# 1. bump `version` in pyproject.toml, commit
+# 2. tag and push -- the tag must match the version
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The [`release.yml`](.github/workflows/release.yml) workflow checks that the tag
+matches `pyproject.toml`, builds the sdist + wheel with `uv build`, and publishes.
+
+One-time setup on PyPI (Account -> Publishing -> Add a pending publisher):
+
+- **PyPI Project Name:** `anki-addon-release`
+- **Owner / Repository:** `elvis-sik/anki-addon-release`
+- **Workflow name:** `release.yml`
+- **Environment name:** `pypi`
 
 ## Roadmap
 

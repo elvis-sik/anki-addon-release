@@ -332,14 +332,14 @@ def _fill_version_range(page: object, min_version: str | None, max_version: str 
 
 
 def _click_submit(page: object) -> None:
-    submit = page.locator('button[type="submit"], input[type="submit"]').first
-    if _count(submit) > 0:
-        submit.click()
-        return
-
     role_button = page.get_by_role("button", name=re.compile("upload|submit|save|publish", re.IGNORECASE))
     if _count(role_button) > 0:
         role_button.first.click()
+        return
+
+    submit = page.locator('button[type="submit"], input[type="submit"]').last
+    if _count(submit) > 0:
+        submit.click()
         return
 
     raise PublishError("could not find a submit button")

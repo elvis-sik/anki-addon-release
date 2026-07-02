@@ -264,6 +264,7 @@ def _update_form() -> bytes:
         <input name="branch_min_version" maxlength="9">
         <input name="branch_max_version" maxlength="9">
         <textarea name="changelog"></textarea>
+        <button type="submit" formaction="/shared/addons/add-branch">Add New Branch</button>
         <button type="submit">Save</button>
       </form>
     </body></html>

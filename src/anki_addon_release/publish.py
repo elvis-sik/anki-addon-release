@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlencode
 
 from .config import ReleaseConfig
 from .errors import PublishError
@@ -57,8 +58,12 @@ def build_publish_plan(
     if selected_mode == "create" and not title:
         raise PublishError("create mode requires a title or manifest name")
 
-    upload_path = config.ankiweb.upload_path
-    upload_url = f"{base}{upload_path}"
+    upload_url = _upload_url(
+        base=base,
+        upload_path=config.ankiweb.upload_path,
+        mode=selected_mode,
+        addon_id=config.ankiweb.addon_id,
+    )
 
     return PublishPlan(
         mode=selected_mode,
@@ -112,6 +117,13 @@ def _select_mode(mode: str, addon_id: str | None) -> PublishMode:
     if mode in ("create", "update"):
         return mode
     raise PublishError("publish mode must be auto, create, or update")
+
+
+def _upload_url(*, base: str, upload_path: str, mode: PublishMode, addon_id: str | None) -> str:
+    url = f"{base}{upload_path}"
+    if mode == "update":
+        return f"{url}?{urlencode({'id': addon_id or ''})}"
+    return url
 
 
 def _manifest_string(manifest: ManifestReport, key: str) -> str:

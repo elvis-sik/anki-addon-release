@@ -32,6 +32,7 @@ class PublishPlanTests(unittest.TestCase):
 
             self.assertEqual(plan.mode, "update")
             self.assertEqual(plan.addon_id, "123456789")
+            self.assertEqual(plan.upload_url, "https://ankiweb.net/shared/upload?id=123456789")
             self.assertEqual(plan.title, "Study Triage")
             self.assertFalse(plan.submit)
 

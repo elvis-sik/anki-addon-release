@@ -55,6 +55,7 @@ def write_handoff(
         "artifact_path": str(publish_plan.artifact_path),
         "addon_id": publish_plan.addon_id,
         "title": publish_plan.title,
+        "support_url": publish_plan.support_url,
         "description_file": description_file,
         "description_chars": len(publish_plan.description or ""),
         "changelog_file": changelog_file,
@@ -80,6 +81,7 @@ def _checklist(metadata: dict[str, object]) -> str:
     addon_id = metadata.get("addon_id") or "(first publish; no add-on id yet)"
     description_file = metadata.get("description_file") or "(none)"
     changelog_file = metadata.get("changelog_file") or "(none)"
+    support_url = metadata.get("support_url") or "(none)"
     archive_entries = metadata["archive_entries"]
     archive_lines = "\n".join(
         f"- `{entry['filename']}` ({entry['file_size']} bytes)" for entry in archive_entries
@@ -95,6 +97,7 @@ def _checklist(metadata: dict[str, object]) -> str:
 - Artifact: `{metadata['artifact_path']}`
 - Title: {metadata['title']}
 - Add-on ID: {addon_id}
+- Support URL: {support_url}
 - Description file: `{description_file}`
 - Changelog file: `{changelog_file}`
 
@@ -107,7 +110,7 @@ def _checklist(metadata: dict[str, object]) -> str:
 1. Open the upload URL in the user's regular logged-in browser.
 2. Confirm the page is AnkiWeb and the account is correct.
 3. Upload the artifact listed above.
-4. Fill the title and any add-on metadata fields AnkiWeb requires.
+4. Fill the title, support URL, and any add-on metadata fields AnkiWeb requires.
 5. Paste the description from `description.txt` when present.
 6. Paste the changelog from `changelog.txt` when present and supported by the page.
 7. Stop before the final publish/save/submit action and ask the user to confirm.
@@ -146,4 +149,3 @@ Do not click the final publish, save, upload, or submit button until the user ex
 {create_note}
 If the form shape differs from expectations, stop, summarize what changed, and save screenshots or notes before proceeding.
 """
-

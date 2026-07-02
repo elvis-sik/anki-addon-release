@@ -46,7 +46,12 @@ class PublishPlanTests(unittest.TestCase):
             )
             manifest = ManifestReport(
                 path=root / "manifest.json",
-                data={"package": "new_addon", "name": "New Add-on"},
+                data={
+                    "package": "new_addon",
+                    "name": "New Add-on",
+                    "min_point_version": 55,
+                    "max_point_version": 250902,
+                },
                 warnings=(),
             )
 
@@ -54,7 +59,11 @@ class PublishPlanTests(unittest.TestCase):
 
             self.assertEqual(plan.mode, "create")
             self.assertEqual(plan.base_url, "http://127.0.0.1:9999")
+            self.assertEqual(plan.upload_url, "http://127.0.0.1:9999/shared/upload")
             self.assertEqual(plan.title, "New Add-on")
+            self.assertIsNone(plan.support_url)
+            self.assertEqual(plan.branch_min_version, "2.1.55")
+            self.assertEqual(plan.branch_max_version, "25.09.2")
 
     def test_update_mode_requires_addon_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -141,4 +150,3 @@ class PublishPlanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

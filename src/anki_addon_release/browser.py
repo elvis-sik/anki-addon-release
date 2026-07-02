@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from urllib.parse import urljoin
 
 from .errors import PublishError
 from .credentials import LoginCredentials
@@ -66,12 +67,18 @@ class AnkiWebBrowser:
                 _wait_for_frontend(page)
                 status = "login-opened"
                 if credentials is not None:
+                    if _looks_logged_in(page):
+                        _logout(page, login_url)
+                        page.goto(login_url)
+                        _wait_for_frontend(page)
                     _fill_login_form(page, credentials)
                     status = "login-filled"
                     if submit:
                         _click_login_submit(page)
-                        page.wait_for_load_state("networkidle")
+                        _wait_for_login_result(page)
                         status = "login-submitted"
+                elif _looks_logged_in(page):
+                    status = "login-already-active"
                 elif not self.headless:
                     input("Complete AnkiWeb login in the browser, then press Enter here to continue: ")
                 screenshot = self._screenshot(page, "login")
@@ -79,8 +86,7 @@ class AnkiWebBrowser:
             except Exception as exc:
                 raise self._failure("browser login failed", exc, page, "login-failed") from exc
             finally:
-                if context is not None:
-                    context.close()
+                _close_context(context)
         return BrowserPublishResult(status=status, final_url=final_url, screenshot=screenshot)
 
     def publish(self, plan: PublishPlan) -> BrowserPublishResult:
@@ -116,7 +122,7 @@ class AnkiWebBrowser:
                 screenshot = self._screenshot(page, f"publish-{plan.mode}-{status}")
                 final_url = page.url
                 if not plan.submit and not self.headless:
-                    input("Review AnkiWeb form in the browser, then press Enter here to close: ")
+                    _pause_for_review()
             except Exception as exc:
                 raise self._failure(
                     "browser publish failed",
@@ -125,8 +131,7 @@ class AnkiWebBrowser:
                     f"publish-{plan.mode}-failed",
                 ) from exc
             finally:
-                if context is not None:
-                    context.close()
+                _close_context(context)
         return BrowserPublishResult(status=status, final_url=final_url, screenshot=screenshot)
 
     def _screenshot(self, page: object, stem: str) -> Path | None:
@@ -171,6 +176,15 @@ def _sync_playwright() -> object:
 
     globals()["PlaywrightTimeoutError"] = PlaywrightTimeoutError
     return sync_playwright
+
+
+def _close_context(context: object | None) -> None:
+    if context is None:
+        return
+    try:
+        context.close()
+    except Exception:
+        pass
 
 
 def _ensure_upload_form(page: object) -> None:
@@ -222,6 +236,49 @@ def _wait_for_frontend(page: object) -> None:
         pass
 
 
+def _looks_logged_in(page: object) -> bool:
+    logout_link = page.get_by_role("link", name=re.compile("log out|logout", re.IGNORECASE))
+    if _count(logout_link) > 0:
+        return True
+    return _count(page.locator('a[href*="/account/logout"]')) > 0
+
+
+def _logout(page: object, login_url: str) -> None:
+    page.goto(urljoin(login_url, "/account/logout"))
+    _wait_for_frontend(page)
+
+
+def _wait_for_login_result(page: object) -> None:
+    try:
+        page.wait_for_function(
+            """
+            () => document.querySelector('a[href*="/account/logout"]')
+                || document.querySelector('.alert-danger')
+                || document.querySelector('[role="alert"]')
+            """
+        )
+    except Exception:
+        pass
+    _wait_for_frontend(page)
+    if _looks_logged_in(page):
+        return
+
+    message = _login_error_text(page)
+    suffix = f": {message}" if message else ""
+    raise PublishError(f"login did not complete{suffix}")
+
+
+def _login_error_text(page: object) -> str:
+    for selector in (".alert-danger", '[role="alert"]'):
+        locator = page.locator(selector)
+        if _count(locator) > 0:
+            try:
+                return locator.first.inner_text(timeout=1_000).strip()
+            except Exception:
+                return ""
+    return ""
+
+
 def _fill_login_form(page: object, credentials: LoginCredentials) -> None:
     if not _fill_text_after_wait(page, _EMAIL_CANDIDATES, credentials.email):
         raise PublishError("could not find login email field")
@@ -248,12 +305,30 @@ def _fill_form(page: object, plan: PublishPlan) -> None:
     file_input.set_input_files(str(plan.artifact_path))
 
     _fill_optional_text(page, _TITLE_CANDIDATES, plan.title)
+    if plan.support_url is not None:
+        _fill_optional_text(page, _SUPPORT_URL_CANDIDATES, plan.support_url)
+    _fill_version_range(page, plan.branch_min_version, plan.branch_max_version)
     if plan.description is not None:
         _fill_optional_text(page, _DESCRIPTION_CANDIDATES, plan.description)
     if plan.changelog is not None:
         _fill_optional_text(page, _CHANGELOG_CANDIDATES, plan.changelog)
     if plan.addon_id is not None:
         _fill_optional_text(page, _ADDON_ID_CANDIDATES, plan.addon_id)
+
+
+def _pause_for_review() -> None:
+    try:
+        input("Review AnkiWeb form in the browser, then press Enter here to close: ")
+    except EOFError:
+        return
+
+
+def _fill_version_range(page: object, min_version: str | None, max_version: str | None) -> None:
+    version_inputs = page.locator('input[maxlength="9"]')
+    if min_version is not None and _count(version_inputs) >= 1:
+        version_inputs.nth(0).fill(min_version)
+    if max_version is not None and _count(version_inputs) >= 2:
+        version_inputs.nth(1).fill(max_version)
 
 
 def _click_submit(page: object) -> None:
@@ -302,15 +377,24 @@ def _count(locator: object) -> int:
 
 _TITLE_CANDIDATES = (
     'input[name="title"]',
+    'input[placeholder="Title"]',
     'input[name="name"]',
     'input[id*="title" i]',
     'input[id*="name" i]',
 )
 _DESCRIPTION_CANDIDATES = (
     'textarea[name="description"]',
+    'textarea[rows="15"]',
+    "form textarea",
     'textarea[name="desc"]',
     'textarea[id*="description" i]',
     'textarea[id*="desc" i]',
+)
+_SUPPORT_URL_CANDIDATES = (
+    'input[name="support_url"]',
+    'input[name="supportUrl"]',
+    'input[placeholder="Support Page"]',
+    'input[id*="support" i]',
 )
 _CHANGELOG_CANDIDATES = (
     'textarea[name="changes"]',

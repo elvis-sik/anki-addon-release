@@ -1,22 +1,50 @@
 # anki-addon-release
 
+[![PyPI](https://img.shields.io/pypi/v/anki-addon-release)](https://pypi.org/project/anki-addon-release/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://pypi.org/project/anki-addon-release/)
+[![Source on GitHub](https://img.shields.io/badge/source-GitHub-24292f)](https://github.com/elvis-sik/anki-addon-release)
+
 `anki-addon-release` is a small release helper for Anki add-ons.
 
-The first milestone is deterministic local release prep:
+It provides deterministic local release prep:
 
 - read release config from `pyproject.toml`
 - validate the add-on source tree and `manifest.json`
 - build a clean `.ankiaddon` archive
 - inspect archive contents before upload
 
-The preferred AnkiWeb path is a browser handoff: the tool builds a clean
-release bundle, then Codex or a human uses the user's regular logged-in browser
-to operate AnkiWeb. The Playwright publishing layer remains optional for later
-automation.
+For AnkiWeb, it can either write a regular-browser handoff bundle or drive the
+upload form with Playwright. Browser publishing is review-first by default: the
+final AnkiWeb save/submit button is clicked only when `--submit` is passed.
 
 ## Status
 
-Private prototype. The first real target is releasing the Study Triage add-on.
+Early public release. It has been dogfooded against the
+[Study Triage](https://ankiweb.net/shared/info/1850611434) add-on release flow,
+including AnkiWeb login, create/update form filling, support URL filling,
+branch compatibility fields, and local browser-flow regression tests.
+
+## Install
+
+Run without installing into the current environment:
+
+```bash
+uvx anki-addon-release --help
+```
+
+Or install with `pipx`:
+
+```bash
+pipx install anki-addon-release
+```
+
+For browser publishing support, install the optional browser extra and the
+Playwright browser runtime:
+
+```bash
+pipx install --include-deps "anki-addon-release[browser]"
+playwright install chromium
+```
 
 ## Install For Local Development
 
@@ -128,6 +156,7 @@ exclude = [
 # Omit addon_id for a first publish; set it for updates.
 addon_id = "1234567890"
 title = "Study Triage"
+support_url = "https://github.com/example/study-triage"
 description_file = "README.md"
 changelog_file = "CHANGELOG.md"
 login_email_env = "ANKIWEB_EMAIL"
@@ -221,8 +250,6 @@ Those tests exercise separate create and update forms against a local HTTP serve
 
 ## Roadmap
 
-- Use the handoff bundle to publish Study Triage through regular Chrome.
-- Capture the first published add-on id in Study Triage's release config.
-- Calibrate the Playwright driver against the real AnkiWeb branch upload form.
 - Add saved HTML/screenshot diagnostics on every browser failure.
 - Add public artifact verification by downloading/installing the published add-on into a disposable Anki profile, likely composed with `anki-addon-workbench`.
+- Expand real-world compatibility coverage across more AnkiWeb form variants.

@@ -30,12 +30,13 @@ class AnkiWebConfig:
     base_url: str = "https://ankiweb.net"
     addon_id: str | None = None
     title: str | None = None
+    support_url: str | None = None
     description: str | None = None
     description_file: Path | None = None
     changelog: str | None = None
     changelog_file: Path | None = None
     profile_dir: Path | None = None
-    upload_path: str = "/shared/addons"
+    upload_path: str = "/shared/upload"
     login_email_env: str | None = None
     login_password_env: str | None = None
 
@@ -107,9 +108,10 @@ def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
     base_url = _optional_string(raw, "base_url") or "https://ankiweb.net"
     addon_id = _optional_string(raw, "addon_id")
     title = _optional_string(raw, "title")
+    support_url = _optional_string(raw, "support_url")
     description = _optional_string(raw, "description")
     changelog = _optional_string(raw, "changelog")
-    upload_path = _optional_string(raw, "upload_path") or "/shared/addons"
+    upload_path = _optional_string(raw, "upload_path") or "/shared/upload"
     login_email_env = _optional_string(raw, "login_email_env")
     login_password_env = _optional_string(raw, "login_password_env")
 
@@ -121,6 +123,7 @@ def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
         base_url=base_url.rstrip("/"),
         addon_id=addon_id,
         title=title,
+        support_url=support_url,
         description=description,
         description_file=description_file,
         changelog=changelog,

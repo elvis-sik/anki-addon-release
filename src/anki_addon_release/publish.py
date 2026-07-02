@@ -21,9 +21,12 @@ class PublishPlan:
     artifact_path: Path
     addon_id: str | None
     title: str
+    support_url: str | None
     description: str | None
     changelog: str | None
     submit: bool
+    branch_min_version: str | None = None
+    branch_max_version: str | None = None
 
 
 def build_publish_plan(
@@ -65,9 +68,12 @@ def build_publish_plan(
         artifact_path=(artifact_path or config.artifact_path).resolve(),
         addon_id=config.ankiweb.addon_id,
         title=title,
+        support_url=config.ankiweb.support_url,
         description=description,
         changelog=changelog,
         submit=submit,
+        branch_min_version=_manifest_point_version(manifest, "min_point_version"),
+        branch_max_version=_manifest_point_version(manifest, "max_point_version"),
     )
 
 
@@ -87,10 +93,16 @@ def describe_publish_plan(plan: PublishPlan) -> list[str]:
     ]
     if plan.addon_id:
         lines.append(f"addon_id: {plan.addon_id}")
+    if plan.support_url:
+        lines.append(f"support_url: {plan.support_url}")
     if plan.description is not None:
         lines.append(f"description: {len(plan.description)} chars")
     if plan.changelog is not None:
         lines.append(f"changelog: {len(plan.changelog)} chars")
+    if plan.branch_min_version is not None:
+        lines.append(f"branch_min_version: {plan.branch_min_version}")
+    if plan.branch_max_version is not None:
+        lines.append(f"branch_max_version: {plan.branch_max_version}")
     return lines
 
 
@@ -107,6 +119,25 @@ def _manifest_string(manifest: ManifestReport, key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _manifest_point_version(manifest: ManifestReport, key: str) -> str | None:
+    value = manifest.data.get(key)
+    if not isinstance(value, int) or value == 0:
+        return None
+    return _format_point_version(value)
+
+
+def _format_point_version(value: int) -> str:
+    sign = "-" if value < 0 else ""
+    point_version = abs(value)
+    if point_version < 100:
+        return f"{sign}2.1.{point_version}"
+
+    major = point_version // 10_000
+    minor = (point_version // 100) % 100
+    patch = point_version % 100
+    return f"{sign}{major:02d}.{minor:02d}.{patch}"
+
+
 def _text_value(*, direct: str | None, file_path: Path | None, field_name: str) -> str | None:
     if direct is not None and file_path is not None:
         raise PublishError(f"ankiweb.{field_name} and ankiweb.{field_name}_file cannot both be set")
@@ -117,4 +148,3 @@ def _text_value(*, direct: str | None, file_path: Path | None, field_name: str) 
     if not file_path.exists():
         raise PublishError(f"{field_name}_file not found: {file_path}")
     return file_path.read_text(encoding="utf-8")
-

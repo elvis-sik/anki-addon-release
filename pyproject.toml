@@ -13,7 +13,7 @@ authors = [
   { name = "Elvis Sik" },
 ]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
@@ -21,6 +21,11 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Build Tools",
 ]
+
+[project.urls]
+Homepage = "https://github.com/elvis-sik/anki-addon-release"
+Repository = "https://github.com/elvis-sik/anki-addon-release"
+Issues = "https://github.com/elvis-sik/anki-addon-release/issues"
 
 [project.optional-dependencies]
 browser = [

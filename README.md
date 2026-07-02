@@ -1,6 +1,5 @@
 # anki-addon-release
 
-[![PyPI](https://img.shields.io/pypi/v/anki-addon-release)](https://pypi.org/project/anki-addon-release/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://pypi.org/project/anki-addon-release/)
 [![Source on GitHub](https://img.shields.io/badge/source-GitHub-24292f)](https://github.com/elvis-sik/anki-addon-release)
 
@@ -23,27 +22,30 @@ Early public release. It has been dogfooded against the
 [Study Triage](https://ankiweb.net/shared/info/1850611434) add-on release flow,
 including AnkiWeb login, create/update form filling, support URL filling,
 branch compatibility fields, and local browser-flow regression tests.
+The first PyPI upload is pending a configured PyPI token or trusted-publishing
+environment.
 
 ## Install
 
-Run without installing into the current environment:
+Until the first PyPI release is uploaded, run from GitHub:
+
+```bash
+uvx --from "anki-addon-release @ git+https://github.com/elvis-sik/anki-addon-release.git" \
+  anki-addon-release --help
+```
+
+After a PyPI release is available, the shorter PyPI form will work:
 
 ```bash
 uvx anki-addon-release --help
 ```
 
-Or install with `pipx`:
+For browser publishing support from GitHub, include the browser extra and install
+the Playwright browser runtime:
 
 ```bash
-pipx install anki-addon-release
-```
-
-For browser publishing support, install the optional browser extra and the
-Playwright browser runtime:
-
-```bash
-pipx install --include-deps "anki-addon-release[browser]"
-playwright install chromium
+uvx --from "anki-addon-release[browser] @ git+https://github.com/elvis-sik/anki-addon-release.git" \
+  playwright install chromium
 ```
 
 ## Install For Local Development

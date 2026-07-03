@@ -399,10 +399,15 @@ def _fill_version_range(page: object, min_version: str | None, max_version: str 
 
 
 def _click_submit(page: object) -> None:
-    role_button = page.get_by_role("button", name=re.compile("upload|submit|save|publish", re.IGNORECASE))
-    if _count(role_button) > 0:
-        role_button.first.click()
-        return
+    for pattern in (
+        r"^(save|submit|publish)$",
+        r"^(save changes|submit add-on|publish add-on)$",
+        r"\b(save|submit|publish)\b",
+    ):
+        role_button = page.get_by_role("button", name=re.compile(pattern, re.IGNORECASE))
+        if _count(role_button) > 0:
+            role_button.last.click()
+            return
 
     submit = page.locator('button[type="submit"], input[type="submit"]').last
     if _count(submit) > 0:

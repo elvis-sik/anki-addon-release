@@ -294,6 +294,7 @@ def _create_form() -> bytes:
         <input name="branch_max_version" maxlength="9">
         <textarea name="description"></textarea>
         <textarea name="changes"></textarea>
+        <button type="submit" formaction="/shared/addons/upload-file">Upload file</button>
         <button type="submit">Publish</button>
       </form>
     </body></html>
@@ -309,6 +310,7 @@ def _update_form() -> bytes:
         <input name="branch_min_version" maxlength="9">
         <input name="branch_max_version" maxlength="9">
         <textarea name="changelog"></textarea>
+        <button type="submit" formaction="/shared/addons/upload-file">Upload file</button>
         <button type="submit" formaction="/shared/addons/add-branch">Add New Branch</button>
         <button type="submit">Save</button>
       </form>

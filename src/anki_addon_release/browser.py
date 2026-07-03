@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 
 from .errors import PublishError
 from .credentials import LoginCredentials
-from .publish import PublishPlan
+from .publish import DeckPublishPlan, PublishPlan
 
 
 @dataclass(frozen=True)
@@ -132,6 +132,47 @@ class AnkiWebBrowser:
                     page,
                     f"publish-{plan.mode}-failed",
                 ) from exc
+            finally:
+                _close_context(context)
+        return BrowserPublishResult(status=status, final_url=final_url, screenshot=screenshot)
+
+    def publish_deck(self, plan: DeckPublishPlan) -> BrowserPublishResult:
+        if self.headless and not plan.submit:
+            raise PublishError("headless deck publishing requires --submit")
+        if plan.submit and not plan.copyright_confirmed:
+            raise PublishError("deck publishing with --submit requires copyright confirmation")
+
+        sync_playwright = _sync_playwright()
+        with sync_playwright() as playwright:
+            context = None
+            page = None
+            try:
+                context = playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(self.profile_dir),
+                    headless=self.headless,
+                    slow_mo=self.slow_mo_ms,
+                )
+                page = context.new_page()
+                page.set_default_timeout(self.timeout_ms)
+                page.goto(plan.share_url)
+                _wait_for_frontend(page)
+                _raise_known_publish_blockers(page)
+
+                _fill_deck_share_form(page, plan)
+
+                if plan.submit:
+                    _click_deck_submit(page)
+                    page.wait_for_load_state("networkidle")
+                    status = "submitted"
+                else:
+                    status = "prepared"
+
+                screenshot = self._screenshot(page, f"deck-publish-{status}")
+                final_url = page.url
+                if not plan.submit and not self.headless:
+                    _pause_for_review()
+            except Exception as exc:
+                raise self._failure("browser deck publish failed", exc, page, "deck-publish-failed") from exc
             finally:
                 _close_context(context)
         return BrowserPublishResult(status=status, final_url=final_url, screenshot=screenshot)
@@ -319,6 +360,17 @@ def _fill_form(page: object, plan: PublishPlan, *, include_artifact: bool) -> No
         _fill_optional_text(page, _ADDON_ID_CANDIDATES, plan.addon_id)
 
 
+def _fill_deck_share_form(page: object, plan: DeckPublishPlan) -> None:
+    _fill_required_text(page, _TITLE_CANDIDATES, plan.title, field_name="deck title")
+    if plan.tags is not None:
+        _fill_optional_text(page, _TAGS_CANDIDATES, plan.tags)
+    if plan.support_url is not None:
+        _fill_optional_text(page, _SUPPORT_URL_CANDIDATES, plan.support_url)
+    _fill_required_text(page, _DESCRIPTION_CANDIDATES, plan.description, field_name="deck description")
+    if plan.copyright_confirmed:
+        _check_first_checkbox(page)
+
+
 def _save_update_metadata(page: object, plan: PublishPlan) -> None:
     page.goto(plan.upload_url)
     _wait_for_frontend(page)
@@ -357,6 +409,20 @@ def _click_submit(page: object) -> None:
     raise PublishError("could not find a submit button")
 
 
+def _click_deck_submit(page: object) -> None:
+    button = page.get_by_role("button", name=re.compile("share|submit|save|publish", re.IGNORECASE))
+    if _count(button) > 0:
+        button.first.click()
+        return
+
+    submit = page.locator('button[type="submit"], input[type="submit"]').last
+    if _count(submit) > 0:
+        submit.click()
+        return
+
+    raise PublishError("could not find a deck share submit button")
+
+
 def _fill_optional_text(page: object, candidates: tuple[str, ...], value: str) -> bool:
     for selector in candidates:
         locator = page.locator(selector)
@@ -364,6 +430,21 @@ def _fill_optional_text(page: object, candidates: tuple[str, ...], value: str) -
             _fill_locator(locator.first, value)
             return True
     return False
+
+
+def _fill_required_text(page: object, candidates: tuple[str, ...], value: str, *, field_name: str) -> None:
+    if not _fill_optional_text(page, candidates, value):
+        raise PublishError(f"could not find {field_name} field")
+
+
+def _check_first_checkbox(page: object) -> None:
+    checkbox = page.locator('input[type="checkbox"]').first
+    if _count(checkbox) == 0:
+        raise PublishError("could not find copyright confirmation checkbox")
+    try:
+        checkbox.check()
+    except Exception:
+        checkbox.click()
 
 
 def _fill_locator(locator: object, value: str) -> None:
@@ -401,6 +482,11 @@ _TITLE_CANDIDATES = (
     'input[name="name"]',
     'input[id*="title" i]',
     'input[id*="name" i]',
+)
+_TAGS_CANDIDATES = (
+    'input[name="tags"]',
+    'input[placeholder="Tags"]',
+    'input[id*="tag" i]',
 )
 _DESCRIPTION_CANDIDATES = (
     'textarea[name="description"]',

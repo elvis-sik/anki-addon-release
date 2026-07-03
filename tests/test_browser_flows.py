@@ -10,7 +10,7 @@ import unittest
 from anki_addon_release.browser import AnkiWebBrowser, playwright_available
 from anki_addon_release.credentials import LoginCredentials
 from anki_addon_release.errors import PublishError
-from anki_addon_release.publish import PublishPlan
+from anki_addon_release.publish import DeckPublishPlan, PublishPlan
 
 
 RUN_BROWSER_TESTS = os.environ.get("ANKI_ADDON_RELEASE_BROWSER_TESTS") == "1"
@@ -147,6 +147,36 @@ class BrowserFlowTests(unittest.TestCase):
                     timeout_ms=10_000,
                 ).publish(plan)
 
+    def test_deck_share_flow_fills_metadata_and_copyright(self) -> None:
+        with FakeAnkiWebServer() as server, tempfile.TemporaryDirectory() as tmp:
+            plan = DeckPublishPlan(
+                base_url=server.url,
+                share_url=f"{server.url}/decks/share/1650000000000",
+                login_url=f"{server.url}/account/login",
+                source_deck_id="1650000000000",
+                shared_id="987654321",
+                title="Geography Deck",
+                tags="geography maps",
+                support_url="https://github.com/example/geography-deck",
+                description="Deck description",
+                submit=True,
+                copyright_confirmed=True,
+            )
+
+            result = AnkiWebBrowser(
+                profile_dir=Path(tmp) / "profile",
+                headless=True,
+                timeout_ms=10_000,
+            ).publish_deck(plan)
+
+            self.assertEqual(result.status, "submitted")
+            self.assertEqual(server.last_post_path, "/decks/share/1650000000000")
+            self.assertIn(b"Geography+Deck", server.last_post_body)
+            self.assertIn(b"geography+maps", server.last_post_body)
+            self.assertIn(b"https%3A%2F%2Fgithub.com%2Fexample%2Fgeography-deck", server.last_post_body)
+            self.assertIn(b"Deck+description", server.last_post_body)
+            self.assertIn(b"confirmCopyright=on", server.last_post_body)
+
 
 class FakeAnkiWebServer:
     def __init__(self, *, login_is_logged_in: bool = False) -> None:
@@ -170,6 +200,8 @@ class FakeAnkiWebServer:
                     body = _update_form()
                 elif handler.path == "/shared/addons/too-new":
                     body = _account_too_new_page()
+                elif handler.path == "/decks/share/1650000000000":
+                    body = _deck_share_form()
                 elif handler.path == "/account/login":
                     owner.login_get_count += 1
                     if owner.login_is_logged_in and owner.login_get_count == 1:
@@ -283,6 +315,21 @@ def _account_too_new_page() -> bytes:
         <h4>Sorry, your account is too new for this action.</h4>
       </body>
     </html>
+    """
+
+
+def _deck_share_form() -> bytes:
+    return b"""
+    <html><body>
+      <form method="post" action="/decks/share/1650000000000">
+        <input placeholder="Title" name="title">
+        <input placeholder="Tags" name="tags">
+        <input placeholder="Support Page" name="supportUrl">
+        <textarea name="description"></textarea>
+        <input type="checkbox" name="confirmCopyright">
+        <button type="submit">Share</button>
+      </form>
+    </body></html>
     """
 
 

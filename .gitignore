@@ -1,4 +1,6 @@
 .DS_Store
+.env
+.anki-addon-release.local.toml
 .venv/
 __pycache__/
 *.py[cod]

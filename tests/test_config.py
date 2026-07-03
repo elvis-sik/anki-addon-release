@@ -56,6 +56,78 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.ankiweb.login_email_env, "ANKIWEB_EMAIL")
             self.assertEqual(config.ankiweb.login_password_env, "ANKIWEB_PASSWORD")
 
+    def test_loads_deck_config_with_private_local_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Deck\n", encoding="utf-8")
+            (root / "pyproject.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [tool.anki-addon-release]
+                    target = "deck"
+
+                    [tool.anki-addon-release.ankiweb]
+                    shared_id = "987654321"
+                    title = "Geography Deck"
+                    tags = "geography maps"
+                    support_url = "https://github.com/example/geography-deck"
+                    description_file = "README.md"
+
+                    [tool.anki-addon-release.deck]
+                    source_deck_id_env = "ANKIWEB_SOURCE_DECK_ID"
+                    """
+                ).strip(),
+                encoding="utf-8",
+            )
+            (root / ".anki-addon-release.local.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [deck]
+                    source_deck_id = "1650000000000"
+                    copyright_confirmed = true
+                    """
+                ).strip(),
+                encoding="utf-8",
+            )
+
+            config = load_config(root)
+
+            self.assertEqual(config.target, "deck")
+            self.assertIsNone(config.source_dir)
+            self.assertIsNone(config.manifest)
+            self.assertEqual(config.ankiweb.shared_id, "987654321")
+            self.assertEqual(config.ankiweb.title, "Geography Deck")
+            self.assertEqual(config.ankiweb.tags, "geography maps")
+            self.assertEqual(config.ankiweb.description_file, (root / "README.md").resolve())
+            self.assertEqual(config.deck.source_deck_id, "1650000000000")
+            self.assertEqual(config.deck.source_deck_id_env, "ANKIWEB_SOURCE_DECK_ID")
+            self.assertTrue(config.deck.copyright_confirmed)
+
+    def test_can_disable_private_local_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [tool.anki-addon-release]
+                    target = "deck"
+
+                    [tool.anki-addon-release.deck]
+                    source_deck_id_env = "ANKIWEB_SOURCE_DECK_ID"
+                    """
+                ).strip(),
+                encoding="utf-8",
+            )
+            (root / ".anki-addon-release.local.toml").write_text(
+                "[deck]\nsource_deck_id = \"private-id\"\n",
+                encoding="utf-8",
+            )
+
+            config = load_config(root, local_config_file=None)
+
+            self.assertIsNone(config.deck.source_deck_id)
+            self.assertEqual(config.deck.source_deck_id_env, "ANKIWEB_SOURCE_DECK_ID")
+
 
 if __name__ == "__main__":
     unittest.main()

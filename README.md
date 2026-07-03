@@ -3,18 +3,22 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://pypi.org/project/anki-addon-release/)
 [![Source on GitHub](https://img.shields.io/badge/source-GitHub-24292f)](https://github.com/elvis-sik/anki-addon-release)
 
-`anki-addon-release` is a small release helper for Anki add-ons.
+`anki-addon-release` is a small release helper for Anki add-ons and shared decks.
 
-It provides deterministic local release prep:
+For add-ons, it provides deterministic local release prep:
 
 - read release config from `pyproject.toml`
 - validate the add-on source tree and `manifest.json`
 - build a clean `.ankiaddon` archive
 - inspect archive contents before upload
 
-For AnkiWeb, it can either write a regular-browser handoff bundle or drive the
-upload form with Playwright. Browser publishing is review-first by default: the
-final AnkiWeb save/submit button is clicked only when `--submit` is passed.
+For shared decks, it can drive AnkiWeb's deck sharing form without storing the
+private source deck name or deck id in the public repository.
+
+For AnkiWeb, it can either write a regular-browser handoff bundle for add-ons or
+drive the relevant form with Playwright. Browser publishing is review-first by
+default: the final AnkiWeb save/share button is clicked only when `--submit` is
+passed.
 
 ## Status
 
@@ -22,6 +26,9 @@ Early public release. It has been dogfooded against the
 [Study Triage](https://ankiweb.net/shared/info/1850611434) add-on release flow,
 including AnkiWeb login, create/update form filling, support URL filling,
 branch compatibility fields, and local browser-flow regression tests.
+Deck publishing supports public/private config splitting: public repos can hold
+listing metadata, while `.anki-addon-release.local.toml` or `.env` holds the
+private Anki collection deck reference.
 It is published on PyPI via Trusted Publishing.
 
 ## Install
@@ -98,7 +105,8 @@ for review. In `--headless` mode, `--submit-login` is required.
 
 ### Separate Publishing Account
 
-For real publishing, prefer a dedicated AnkiWeb account used only for add-ons.
+For real publishing, prefer a dedicated AnkiWeb account used only for add-ons
+and decks.
 This is an isolation pattern, not a framework requirement: it keeps release
 automation separate from your personal synced collection and makes it easier to
 reason about which account a browser profile is logged into.
@@ -119,14 +127,6 @@ Two AnkiWeb account lifecycle rules matter for that pattern:
   to keep it active. The account-removal article notes that shared add-ons are
   not subject to the usual data expiry, but keeping the publishing account
   active avoids losing account access or release ownership context.
-
-From GitHub, `uv` can run or install the package without a PyPI release once the
-repository is public or otherwise accessible to the local Git credentials:
-
-```bash
-uvx --from "anki-addon-release @ git+https://github.com/elvis-sik/anki-addon-release.git" \
-  anki-addon-release --help
-```
 
 ## Configure An Add-on
 
@@ -164,6 +164,62 @@ login_password_env = "ANKIWEB_PASSWORD"
 
 `include` is optional. When omitted, the whole `source_dir` is considered and `exclude` filters out development files.
 
+## Configure A Deck
+
+AnkiWeb shares decks from the logged-in user's synced collection. To avoid
+leaking private collection structure, keep the public listing metadata in
+`pyproject.toml`, and keep the collection deck id/name in local config or env.
+
+Public `pyproject.toml`:
+
+```toml
+[tool.anki-addon-release]
+target = "deck"
+
+[tool.anki-addon-release.ankiweb]
+# Optional. Record the public shared item id once known.
+shared_id = "1234567890"
+title = "Geography Deck"
+tags = "geography maps"
+support_url = "https://github.com/example/geography-deck"
+description_file = "release/ankiweb-description.md"
+login_email_env = "ANKIWEB_EMAIL"
+login_password_env = "ANKIWEB_PASSWORD"
+
+[tool.anki-addon-release.deck]
+# Safe to commit: this names the env var, not the private deck.
+source_deck_id_env = "ANKIWEB_SOURCE_DECK_ID"
+```
+
+Private `.anki-addon-release.local.toml`:
+
+```toml
+[deck]
+source_deck_id = "1650000000000"
+copyright_confirmed = true
+```
+
+or private `.env`:
+
+```bash
+ANKIWEB_SOURCE_DECK_ID=1650000000000
+```
+
+Both files are loaded automatically when present. Add them to every deck repo's
+`.gitignore`. Existing environment variables win over `.env` values.
+
+If you prefer not to store the numeric deck id, use a private deck name instead:
+
+```toml
+[deck]
+source_deck_name = "Private::Geography"
+copyright_confirmed = true
+```
+
+Deck-name resolution uses AnkiConnect's `deckNamesAndIds`, so Anki must be open
+with AnkiConnect running. Numeric `source_deck_id` is the most deterministic
+release input.
+
 ## Commands
 
 From an add-on repository:
@@ -174,11 +230,20 @@ anki-addon-release package
 anki-addon-release inspect dist/study-triage.ankiaddon
 ```
 
+From a deck repository:
+
+```bash
+anki-addon-release check
+anki-addon-release publish --dry-run
+```
+
 Prepare an AnkiWeb publish plan without opening a browser:
 
 ```bash
 anki-addon-release publish --dry-run
 ```
+
+For deck targets, dry-run output redacts the private source deck id.
 
 Build a regular-browser handoff bundle for Codex or a human:
 
@@ -209,10 +274,17 @@ Prepare an upload with Playwright without clicking the final submit button:
 anki-addon-release publish --diagnostics-dir out/release-diagnostics
 ```
 
-Click the final submit button only when the flow is trusted:
+Click the final add-on submit button only when the flow is trusted:
 
 ```bash
 anki-addon-release publish --submit --diagnostics-dir out/release-diagnostics
+```
+
+For deck targets, the final share button also requires an explicit copyright
+confirmation, either in private local config or as a command flag:
+
+```bash
+anki-addon-release publish --submit --confirm-copyright --diagnostics-dir out/release-diagnostics
 ```
 
 Use `--mode create` for first-publish testing and `--mode update` for updating a configured `addon_id`. `--mode auto` uses update when `ankiweb.addon_id` is present and create otherwise.
@@ -255,8 +327,8 @@ no API token is stored. To cut a release:
 ```bash
 # 1. bump `version` in pyproject.toml, commit
 # 2. tag and push -- the tag must match the version
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The [`release.yml`](.github/workflows/release.yml) workflow checks that the tag
@@ -272,5 +344,5 @@ One-time setup on PyPI (Account -> Publishing -> Add a pending publisher):
 ## Roadmap
 
 - Add saved HTML/screenshot diagnostics on every browser failure.
-- Add public artifact verification by downloading/installing the published add-on into a disposable Anki profile, likely composed with `anki-addon-workbench`.
+- Add public artifact verification by downloading/installing the published add-on/deck into a disposable Anki profile, likely composed with `anki-addon-workbench`.
 - Expand real-world compatibility coverage across more AnkiWeb form variants.

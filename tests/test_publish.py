@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from anki_addon_release.config import AnkiWebConfig, ReleaseConfig
+from anki_addon_release.config import AnkiWebConfig, DeckConfig, ReleaseConfig
 from anki_addon_release.errors import PublishError
 from anki_addon_release.manifest import ManifestReport
-from anki_addon_release.publish import build_publish_plan, default_profile_dir, describe_publish_plan
+from anki_addon_release.publish import (
+    build_deck_publish_plan,
+    build_publish_plan,
+    default_profile_dir,
+    describe_deck_publish_plan,
+    describe_publish_plan,
+)
 
 
 class PublishPlanTests(unittest.TestCase):
@@ -147,6 +156,100 @@ class PublishPlanTests(unittest.TestCase):
                 default_profile_dir(config),
                 root / ".anki-addon-release" / "browser-profile",
             )
+
+    def test_deck_publish_plan_uses_env_private_source_and_redacts_description(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            description = root / "README.md"
+            description.write_text("# Deck\n", encoding="utf-8")
+            old = os.environ.get("ANKIWEB_SOURCE_DECK_ID")
+            os.environ["ANKIWEB_SOURCE_DECK_ID"] = "1650000000000"
+            try:
+                config = ReleaseConfig(
+                    project_root=root,
+                    artifact_dir=root / "dist",
+                    target="deck",
+                    ankiweb=AnkiWebConfig(
+                        shared_id="987654321",
+                        title="Geography Deck",
+                        tags="geography maps",
+                        support_url="https://github.com/example/geography-deck",
+                        description_file=description,
+                    ),
+                    deck=DeckConfig(source_deck_id_env="ANKIWEB_SOURCE_DECK_ID", copyright_confirmed=True),
+                )
+
+                plan = build_deck_publish_plan(config, base_url="http://127.0.0.1:9999", submit=True)
+            finally:
+                if old is None:
+                    os.environ.pop("ANKIWEB_SOURCE_DECK_ID", None)
+                else:
+                    os.environ["ANKIWEB_SOURCE_DECK_ID"] = old
+
+            self.assertEqual(plan.share_url, "http://127.0.0.1:9999/decks/share/1650000000000")
+            self.assertEqual(plan.shared_id, "987654321")
+            self.assertEqual(plan.title, "Geography Deck")
+            self.assertEqual(plan.tags, "geography maps")
+            self.assertTrue(plan.copyright_confirmed)
+            lines = describe_deck_publish_plan(plan)
+            self.assertIn("source_deck_id: configured", lines)
+            self.assertIn("share_url: http://127.0.0.1:9999/decks/share/<source-deck-id>", lines)
+            self.assertNotIn("1650000000000", "\n".join(lines))
+
+    def test_deck_publish_submit_requires_copyright_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            description = root / "README.md"
+            description.write_text("# Deck\n", encoding="utf-8")
+            config = ReleaseConfig(
+                project_root=root,
+                artifact_dir=root / "dist",
+                target="deck",
+                ankiweb=AnkiWebConfig(title="Geography Deck", description_file=description),
+                deck=DeckConfig(source_deck_id="1650000000000"),
+            )
+
+            with self.assertRaisesRegex(PublishError, "copyright"):
+                build_deck_publish_plan(config, submit=True)
+
+    def test_deck_publish_can_resolve_source_name_through_anki_connect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            description = root / "README.md"
+            description.write_text("# Deck\n", encoding="utf-8")
+            config = ReleaseConfig(
+                project_root=root,
+                artifact_dir=root / "dist",
+                target="deck",
+                ankiweb=AnkiWebConfig(title="Geography Deck", description_file=description),
+                deck=DeckConfig(
+                    source_deck_name="Private::Geography",
+                    anki_connect_url="http://127.0.0.1:8765",
+                    copyright_confirmed=True,
+                ),
+            )
+
+            response = FakeAnkiConnectResponse({"result": {"Private::Geography": 1650000000000}, "error": None})
+            with patch("anki_addon_release.publish.urlopen", return_value=response) as urlopen:
+                plan = build_deck_publish_plan(config, submit=True)
+
+            self.assertEqual(plan.source_deck_id, "1650000000000")
+            request = urlopen.call_args.args[0]
+            self.assertEqual(json.loads(request.data.decode("utf-8"))["action"], "deckNamesAndIds")
+
+
+class FakeAnkiConnectResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+
+    def __enter__(self) -> "FakeAnkiConnectResponse":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
 
 
 if __name__ == "__main__":

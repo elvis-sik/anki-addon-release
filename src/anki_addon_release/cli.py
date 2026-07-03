@@ -7,11 +7,18 @@ import sys
 from .config import load_config
 from .browser import AnkiWebBrowser
 from .credentials import resolve_env_credentials
+from .envfile import load_env_file
 from .errors import ReleaseError
 from .handoff import write_handoff
 from .manifest import load_manifest
 from .packager import build_plan, inspect_archive, write_package
-from .publish import build_publish_plan, default_profile_dir, describe_publish_plan
+from .publish import (
+    build_deck_publish_plan,
+    build_publish_plan,
+    default_profile_dir,
+    describe_deck_publish_plan,
+    describe_publish_plan,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,6 +44,26 @@ def _parser() -> argparse.ArgumentParser:
         "--config",
         default="pyproject.toml",
         help="config file relative to project root",
+    )
+    parser.add_argument(
+        "--local-config",
+        default=".anki-addon-release.local.toml",
+        help="private local TOML overlay relative to project root; ignored when absent",
+    )
+    parser.add_argument(
+        "--no-local-config",
+        action="store_true",
+        help="do not load the private local config overlay",
+    )
+    parser.add_argument(
+        "--env-file",
+        default=".env",
+        help="dotenv-style env file relative to project root; ignored when absent",
+    )
+    parser.add_argument(
+        "--no-env-file",
+        action="store_true",
+        help="do not load an env file before resolving env-var config",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -70,6 +97,11 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("--base-url", help="override AnkiWeb base URL, useful for fake-server tests")
     publish.add_argument("--dry-run", action="store_true", help="print the publish plan only")
     publish.add_argument("--submit", action="store_true", help="click the final submit button")
+    publish.add_argument(
+        "--confirm-copyright",
+        action="store_true",
+        help="confirm deck-sharing copyright declaration when publishing deck targets",
+    )
     _add_browser_args(publish)
     publish.set_defaults(func=_publish)
 
@@ -91,7 +123,18 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _check(args: argparse.Namespace) -> int:
-    config = load_config(args.project, args.config)
+    config = _load_runtime_config(args)
+
+    if config.target == "deck":
+        print(f"project: {config.project_root}")
+        print("target: deck")
+        print(f"title: {config.ankiweb.title or '(missing)'}")
+        print(f"description: {_configured_text(config.ankiweb.description, config.ankiweb.description_file)}")
+        print(f"source_deck: {'configured' if _deck_source_configured(config) else 'not configured'}")
+        return 0
+
+    if config.manifest is None:
+        raise ReleaseError("add-on target requires a manifest")
     manifest = load_manifest(config.manifest)
     plan = build_plan(config)
 
@@ -106,7 +149,11 @@ def _check(args: argparse.Namespace) -> int:
 
 
 def _package(args: argparse.Namespace) -> int:
-    config = load_config(args.project, args.config)
+    config = _load_runtime_config(args)
+    if config.target != "addon":
+        raise ReleaseError("package is only available for add-on targets; deck targets publish from AnkiWeb")
+    if config.manifest is None:
+        raise ReleaseError("add-on target requires a manifest")
     manifest = load_manifest(config.manifest)
     plan = build_plan(config)
 
@@ -132,15 +179,14 @@ def _inspect(args: argparse.Namespace) -> int:
 
 
 def _login(args: argparse.Namespace) -> int:
-    config = load_config(args.project, args.config)
-    manifest = load_manifest(config.manifest)
-    plan = build_publish_plan(config, manifest, base_url=args.base_url or None)
+    config = _load_runtime_config(args)
+    base_url = (args.base_url or config.ankiweb.base_url).rstrip("/")
     credentials = resolve_env_credentials(
         email_env=args.email_env or config.ankiweb.login_email_env,
         password_env=args.password_env or config.ankiweb.login_password_env,
     )
     browser = _browser(args, config)
-    result = browser.login(plan.login_url, credentials=credentials, submit=args.submit_login)
+    result = browser.login(f"{base_url}/account/login", credentials=credentials, submit=args.submit_login)
     print(f"status: {result.status}")
     print(f"final_url: {result.final_url}")
     if result.screenshot:
@@ -149,7 +195,31 @@ def _login(args: argparse.Namespace) -> int:
 
 
 def _publish(args: argparse.Namespace) -> int:
-    config = load_config(args.project, args.config)
+    config = _load_runtime_config(args)
+    if config.target == "deck":
+        publish_plan = build_deck_publish_plan(
+            config,
+            base_url=args.base_url or None,
+            submit=args.submit,
+            confirm_copyright=args.confirm_copyright,
+        )
+        for line in describe_deck_publish_plan(publish_plan):
+            print(line)
+        if args.dry_run:
+            return 0
+
+        browser = _browser(args, config)
+        result = browser.publish_deck(publish_plan)
+        print(f"status: {result.status}")
+        print(f"final_url: {result.final_url}")
+        if result.screenshot:
+            print(f"screenshot: {result.screenshot}")
+        if not args.submit:
+            print("final share was not clicked; rerun with --submit when ready")
+        return 0
+
+    if config.manifest is None:
+        raise ReleaseError("add-on target requires a manifest")
     manifest = load_manifest(config.manifest)
     package_plan = build_plan(config)
     publish_plan = build_publish_plan(
@@ -182,7 +252,11 @@ def _publish(args: argparse.Namespace) -> int:
 
 
 def _handoff(args: argparse.Namespace) -> int:
-    config = load_config(args.project, args.config)
+    config = _load_runtime_config(args)
+    if config.target != "addon":
+        raise ReleaseError("handoff is currently only available for add-on targets")
+    if config.manifest is None:
+        raise ReleaseError("add-on target requires a manifest")
     manifest = load_manifest(config.manifest)
     package_plan = build_plan(config)
     artifact = write_package(package_plan)
@@ -227,4 +301,39 @@ def _browser(args: argparse.Namespace, config: object) -> AnkiWebBrowser:
         timeout_ms=args.timeout_ms,
         slow_mo_ms=args.slow_mo_ms,
         diagnostics_dir=args.diagnostics_dir,
+    )
+
+
+def _load_runtime_config(args: argparse.Namespace):
+    if not args.no_env_file:
+        load_env_file(_project_path(args.project, args.env_file))
+    local_config = None if args.no_local_config else args.local_config
+    return load_config(args.project, args.config, local_config_file=local_config)
+
+
+def _project_path(project: Path, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return (project / path).resolve()
+
+
+def _configured_text(direct: str | None, file_path: Path | None) -> str:
+    if direct is not None:
+        return f"{len(direct)} chars"
+    if file_path is not None:
+        return str(file_path)
+    return "(missing)"
+
+
+def _deck_source_configured(config: object) -> bool:
+    deck = config.deck
+    return any(
+        value
+        for value in (
+            deck.source_deck_id,
+            deck.source_deck_id_env,
+            deck.source_deck_name,
+            deck.source_deck_name_env,
+        )
     )

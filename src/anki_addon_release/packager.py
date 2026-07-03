@@ -23,6 +23,11 @@ class ArchiveEntry:
 
 
 def build_plan(config: ReleaseConfig) -> PackagePlan:
+    if config.target != "addon":
+        raise PackageError("package planning is only available for add-on targets")
+    if config.source_dir is None or config.manifest is None:
+        raise PackageError("add-on targets require source_dir and manifest")
+
     source_dir = config.source_dir.resolve()
     manifest = config.manifest.resolve()
     artifact_path = config.artifact_path.resolve()
@@ -84,6 +89,8 @@ def inspect_archive(path: Path) -> tuple[ArchiveEntry, ...]:
 
 
 def _included_files(config: ReleaseConfig) -> set[Path]:
+    if config.source_dir is None:
+        raise PackageError("add-on targets require source_dir")
     if config.include:
         files: set[Path] = set()
         for pattern in config.include:

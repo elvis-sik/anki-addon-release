@@ -126,12 +126,16 @@ def _check(args: argparse.Namespace) -> int:
     config = _load_runtime_config(args)
 
     if config.target == "deck":
+        listing_fallback = "listing_file" if config.ankiweb.listing_file else None
         print(f"project: {config.project_root}")
         print("target: deck")
-        print(f"title: {_configured_text(config.ankiweb.title, config.ankiweb.title_file)}")
-        print(f"tags: {_configured_text(config.ankiweb.tags, config.ankiweb.tags_file)}")
-        print(f"support_url: {_configured_text(config.ankiweb.support_url, config.ankiweb.support_url_file)}")
-        print(f"description: {_configured_text(config.ankiweb.description, config.ankiweb.description_file)}")
+        print(f"listing_file: {config.ankiweb.listing_file or '(missing)'}")
+        print(f"title: {_configured_text(config.ankiweb.title, config.ankiweb.title_file, fallback=listing_fallback)}")
+        print(f"tags: {_configured_text(config.ankiweb.tags, config.ankiweb.tags_file, fallback=listing_fallback)}")
+        print(
+            f"support_url: {_configured_text(config.ankiweb.support_url, config.ankiweb.support_url_file, fallback=listing_fallback)}"
+        )
+        print(f"description: {_configured_text(config.ankiweb.description, config.ankiweb.description_file, fallback=listing_fallback)}")
         print(f"source_deck: {'configured' if _deck_source_configured(config) else 'not configured'}")
         return 0
 
@@ -320,11 +324,13 @@ def _project_path(project: Path, value: str) -> Path:
     return (project / path).resolve()
 
 
-def _configured_text(direct: str | None, file_path: Path | None) -> str:
+def _configured_text(direct: str | None, file_path: Path | None, *, fallback: str | None = None) -> str:
     if direct is not None:
         return f"{len(direct)} chars"
     if file_path is not None:
         return str(file_path)
+    if fallback is not None:
+        return fallback
     return "(missing)"
 
 

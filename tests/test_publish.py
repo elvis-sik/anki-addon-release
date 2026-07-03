@@ -129,6 +129,44 @@ class PublishPlanTests(unittest.TestCase):
             self.assertEqual(plan.description, "# Description\n")
             self.assertEqual(plan.changelog, "## Changes\n")
 
+    def test_listing_file_front_matter_and_body_are_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            listing = root / "release" / "ankiweb.md"
+            listing.parent.mkdir()
+            listing.write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "title: File Listing Title",
+                        "support_url: https://github.com/example/file-listing",
+                        "---",
+                        "",
+                        "# Listing description",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config = ReleaseConfig(
+                project_root=root,
+                source_dir=root,
+                manifest=root / "manifest.json",
+                artifact_dir=root / "dist",
+                ankiweb=AnkiWebConfig(listing_file=listing),
+            )
+            manifest = ManifestReport(
+                path=root / "manifest.json",
+                data={"package": "new_addon", "name": "Manifest Name"},
+                warnings=(),
+            )
+
+            plan = build_publish_plan(config, manifest)
+
+            self.assertEqual(plan.title, "File Listing Title")
+            self.assertEqual(plan.support_url, "https://github.com/example/file-listing")
+            self.assertEqual(plan.description, "# Listing description\n")
+
     def test_describe_publish_plan_avoids_dumping_long_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -168,14 +206,23 @@ class PublishPlanTests(unittest.TestCase):
     def test_deck_publish_plan_uses_env_private_source_and_redacts_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            title = root / "TITLE.txt"
-            tags = root / "TAGS.txt"
-            support_url = root / "SUPPORT_URL.txt"
-            description = root / "README.md"
-            title.write_text("Geography Deck\n", encoding="utf-8")
-            tags.write_text("geography maps\n", encoding="utf-8")
-            support_url.write_text("https://github.com/example/geography-deck\n", encoding="utf-8")
-            description.write_text("# Deck\n", encoding="utf-8")
+            listing = root / "release" / "ankiweb.md"
+            listing.parent.mkdir()
+            listing.write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "title: Geography Deck",
+                        "tags: geography maps",
+                        "support_url: https://github.com/example/geography-deck",
+                        "---",
+                        "",
+                        "Deck description from listing.",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
             old = os.environ.get("ANKIWEB_SOURCE_DECK_ID")
             os.environ["ANKIWEB_SOURCE_DECK_ID"] = "1650000000000"
             try:
@@ -185,10 +232,7 @@ class PublishPlanTests(unittest.TestCase):
                     target="deck",
                     ankiweb=AnkiWebConfig(
                         shared_id="987654321",
-                        title_file=title,
-                        tags_file=tags,
-                        support_url_file=support_url,
-                        description_file=description,
+                        listing_file=listing,
                     ),
                     deck=DeckConfig(source_deck_id_env="ANKIWEB_SOURCE_DECK_ID", copyright_confirmed=True),
                 )
@@ -204,6 +248,7 @@ class PublishPlanTests(unittest.TestCase):
             self.assertEqual(plan.shared_id, "987654321")
             self.assertEqual(plan.title, "Geography Deck")
             self.assertEqual(plan.tags, "geography maps")
+            self.assertEqual(plan.description, "Deck description from listing.\n")
             self.assertTrue(plan.copyright_confirmed)
             lines = describe_deck_publish_plan(plan)
             self.assertIn("source_deck_id: configured", lines)

@@ -56,17 +56,13 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.ankiweb.login_email_env, "ANKIWEB_EMAIL")
             self.assertEqual(config.ankiweb.login_password_env, "ANKIWEB_PASSWORD")
 
-    def test_loads_default_listing_files_from_release_directory(self) -> None:
+    def test_loads_default_listing_file_from_release_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "addon").mkdir()
             release = root / "release"
             release.mkdir()
-            (release / "ankiweb-title.txt").write_text("Study Triage\n", encoding="utf-8")
-            (release / "ankiweb-tags.txt").write_text("study triage\n", encoding="utf-8")
-            (release / "ankiweb-support-url.txt").write_text("https://github.com/example/study-triage\n", encoding="utf-8")
-            (release / "ankiweb-description.md").write_text("# Description\n", encoding="utf-8")
-            (release / "ankiweb-changelog.md").write_text("## Changelog\n", encoding="utf-8")
+            (release / "ankiweb.md").write_text("# Description\n", encoding="utf-8")
             (root / "pyproject.toml").write_text(
                 textwrap.dedent(
                     """
@@ -83,11 +79,7 @@ class ConfigTests(unittest.TestCase):
 
             config = load_config(root)
 
-            self.assertEqual(config.ankiweb.title_file, (release / "ankiweb-title.txt").resolve())
-            self.assertEqual(config.ankiweb.tags_file, (release / "ankiweb-tags.txt").resolve())
-            self.assertEqual(config.ankiweb.support_url_file, (release / "ankiweb-support-url.txt").resolve())
-            self.assertEqual(config.ankiweb.description_file, (release / "ankiweb-description.md").resolve())
-            self.assertEqual(config.ankiweb.changelog_file, (release / "ankiweb-changelog.md").resolve())
+            self.assertEqual(config.ankiweb.listing_file, (release / "ankiweb.md").resolve())
 
     def test_loads_deck_config_with_private_local_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

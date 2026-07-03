@@ -49,6 +49,14 @@ class DeckPublishPlan:
     copyright_confirmed: bool
 
 
+@dataclass(frozen=True)
+class ListingText:
+    title: str | None = None
+    tags: str | None = None
+    support_url: str | None = None
+    description: str | None = None
+
+
 def build_publish_plan(
     config: ReleaseConfig,
     manifest: ManifestReport,
@@ -60,20 +68,22 @@ def build_publish_plan(
 ) -> PublishPlan:
     selected_mode = _select_mode(mode, config.ankiweb.addon_id)
     base = (base_url or config.ankiweb.base_url).rstrip("/")
+    listing = _listing_text(config.ankiweb.listing_file)
     title = (
         _short_text_value(direct=config.ankiweb.title, file_path=config.ankiweb.title_file, field_name="title")
+        or listing.title
         or _manifest_string(manifest, "name")
     )
     support_url = _short_text_value(
         direct=config.ankiweb.support_url,
         file_path=config.ankiweb.support_url_file,
         field_name="support_url",
-    )
+    ) or listing.support_url
     description = _text_value(
         direct=config.ankiweb.description,
         file_path=config.ankiweb.description_file,
         field_name="description",
-    )
+    ) or listing.description
     changelog = _text_value(
         direct=config.ankiweb.changelog,
         file_path=config.ankiweb.changelog_file,
@@ -121,22 +131,26 @@ def build_deck_publish_plan(
 
     base = (base_url or config.ankiweb.base_url).rstrip("/")
     source_deck_id = resolve_source_deck_id(config.deck)
-    title = _short_text_value(direct=config.ankiweb.title, file_path=config.ankiweb.title_file, field_name="title")
+    listing = _listing_text(config.ankiweb.listing_file)
+    title = (
+        _short_text_value(direct=config.ankiweb.title, file_path=config.ankiweb.title_file, field_name="title")
+        or listing.title
+    )
     if not title:
-        raise PublishError("deck publishing requires ankiweb.title or ankiweb.title_file")
-    tags = _short_text_value(direct=config.ankiweb.tags, file_path=config.ankiweb.tags_file, field_name="tags")
+        raise PublishError("deck publishing requires ankiweb.title, ankiweb.title_file, or a listing_file title")
+    tags = _short_text_value(direct=config.ankiweb.tags, file_path=config.ankiweb.tags_file, field_name="tags") or listing.tags
     support_url = _short_text_value(
         direct=config.ankiweb.support_url,
         file_path=config.ankiweb.support_url_file,
         field_name="support_url",
-    )
+    ) or listing.support_url
     description = _text_value(
         direct=config.ankiweb.description,
         file_path=config.ankiweb.description_file,
         field_name="description",
-    )
+    ) or listing.description
     if not description or not description.strip():
-        raise PublishError("deck publishing requires ankiweb.description or ankiweb.description_file")
+        raise PublishError("deck publishing requires ankiweb.description, ankiweb.description_file, or a listing_file body")
 
     copyright_confirmed = config.deck.copyright_confirmed or confirm_copyright
     if submit and not copyright_confirmed:
@@ -329,3 +343,61 @@ def _short_text_value(*, direct: str | None, file_path: Path | None, field_name:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _listing_text(file_path: Path | None) -> ListingText:
+    if file_path is None:
+        return ListingText()
+    if not file_path.exists():
+        raise PublishError(f"listing_file not found: {file_path}")
+
+    text = file_path.read_text(encoding="utf-8")
+    metadata: dict[str, str] = {}
+    body = text
+    if text.startswith("---\n"):
+        header, separator, rest = text[4:].partition("\n---")
+        if not separator:
+            raise PublishError(f"listing_file front matter is missing a closing ---: {file_path}")
+        body = rest.lstrip("\n")
+        metadata = _parse_listing_metadata(header, file_path)
+
+    return ListingText(
+        title=_metadata_value(metadata, "title"),
+        tags=_metadata_value(metadata, "tags"),
+        support_url=_metadata_value(metadata, "support_url"),
+        description=body if body.strip() else None,
+    )
+
+
+def _parse_listing_metadata(header: str, file_path: Path) -> dict[str, str]:
+    allowed = {"title", "tags", "support_url"}
+    metadata: dict[str, str] = {}
+    for line_number, raw_line in enumerate(header.splitlines(), start=2):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
+            raise PublishError(f"invalid listing_file front matter line {line_number} in {file_path}: expected key: value")
+        key, value = line.split(":", 1)
+        normalized_key = key.strip().replace("-", "_")
+        if normalized_key not in allowed:
+            allowed_text = ", ".join(sorted(allowed))
+            raise PublishError(
+                f"unsupported listing_file key {key.strip()!r} in {file_path}; supported keys: {allowed_text}"
+            )
+        metadata[normalized_key] = _strip_metadata_quotes(value.strip())
+    return metadata
+
+
+def _metadata_value(metadata: dict[str, str], key: str) -> str | None:
+    value = metadata.get(key)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _strip_metadata_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value

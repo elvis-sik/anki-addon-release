@@ -22,29 +22,27 @@ Early public release. It has been dogfooded against the
 [Study Triage](https://ankiweb.net/shared/info/1850611434) add-on release flow,
 including AnkiWeb login, create/update form filling, support URL filling,
 branch compatibility fields, and local browser-flow regression tests.
-The first PyPI upload is pending the one-time PyPI Trusted Publishing setup.
+It is published on PyPI via Trusted Publishing.
 
 ## Install
-
-Until the first PyPI release is uploaded, run from GitHub:
-
-```bash
-uvx --from "anki-addon-release @ git+https://github.com/elvis-sik/anki-addon-release.git" \
-  anki-addon-release --help
-```
-
-After a PyPI release is available, the shorter PyPI form will work:
 
 ```bash
 uvx anki-addon-release --help
 ```
 
-For browser publishing support from GitHub, include the browser extra and install
-the Playwright browser runtime:
+For browser publishing support, include the browser extra and install the
+Playwright browser runtime:
 
 ```bash
-uvx --from "anki-addon-release[browser] @ git+https://github.com/elvis-sik/anki-addon-release.git" \
-  playwright install chromium
+uvx --from "anki-addon-release[browser]" playwright install chromium
+uvx --from "anki-addon-release[browser]" anki-addon-release --help
+```
+
+For unreleased changes on `main`, run directly from GitHub:
+
+```bash
+uvx --from "anki-addon-release @ git+https://github.com/elvis-sik/anki-addon-release.git" \
+  anki-addon-release --help
 ```
 
 ## Install For Local Development
@@ -257,8 +255,8 @@ no API token is stored. To cut a release:
 ```bash
 # 1. bump `version` in pyproject.toml, commit
 # 2. tag and push -- the tag must match the version
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 The [`release.yml`](.github/workflows/release.yml) workflow checks that the tag

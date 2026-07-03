@@ -3,12 +3,12 @@ revision = 3
 requires-python = ">=3.11"
 
 [options]
-exclude-newer = "2026-06-22T20:03:22.055128Z"
+exclude-newer = "2026-06-26T01:01:30.109435Z"
 exclude-newer-span = "P7D"
 
 [[package]]
 name = "anki-addon-release"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 
 [package.optional-dependencies]

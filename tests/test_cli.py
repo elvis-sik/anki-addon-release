@@ -48,7 +48,7 @@ class CliTests(unittest.TestCase):
                         "title: Preview Add-on",
                         "---",
                         "",
-                        "GitHub: https://github.com/example/addon",
+                        "GitHub: [https://github.com/example/addon](https://github.com/example/addon)",
                         "",
                         "Body text.",
                         "",
@@ -64,7 +64,10 @@ class CliTests(unittest.TestCase):
             output = stdout.getvalue()
             self.assertEqual(exit_code, 0)
             self.assertIn("--- BEGIN DESCRIPTION ---", output)
-            self.assertIn("GitHub: https://github.com/example/addon\n\nBody text.\n", output)
+            self.assertIn(
+                "GitHub: [https://github.com/example/addon](https://github.com/example/addon)\n\nBody text.\n",
+                output,
+            )
             self.assertIn("--- END DESCRIPTION ---", output)
 
 

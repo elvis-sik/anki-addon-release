@@ -190,7 +190,7 @@ tags: geography maps
 support_url: https://github.com/example/geography-deck
 ---
 
-GitHub: https://github.com/example/geography-deck
+GitHub: [https://github.com/example/geography-deck](https://github.com/example/geography-deck)
 
 Markdown description for AnkiWeb.
 ```
@@ -201,10 +201,11 @@ You can point at another path with `listing_file`. Inline `title`, `tags`,
 are available for unusual cases.
 
 When `support_url` is a GitHub repository, `check`, `publish --dry-run`, and
-browser publishing warn unless that exact GitHub URL is visibly present in the
-description body. Use visible text such as
-`GitHub: https://github.com/example/geography-deck`; do not rely only on the
-support URL field or a hidden Markdown link target.
+browser publishing warn unless that exact GitHub URL is present as a clickable
+Markdown link with the URL as its visible label. Use visible link text such as
+`GitHub: [https://github.com/example/geography-deck](https://github.com/example/geography-deck)`;
+do not rely only on the support URL field, a plain URL, or a hidden Markdown
+link target.
 
 ## Configure A Deck
 
@@ -378,8 +379,8 @@ no API token is stored. To cut a release:
 ```bash
 # 1. bump `version` in pyproject.toml, commit
 # 2. tag and push -- the tag must match the version
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 The [`release.yml`](.github/workflows/release.yml) workflow checks that the tag

@@ -265,20 +265,22 @@ def describe_deck_publish_plan(plan: DeckPublishPlan) -> list[str]:
 def ankiweb_description_warnings(support_url: str | None, description: str | None) -> list[str]:
     if not support_url or "github.com/" not in support_url.lower():
         return []
-    if description and _has_visible_url(description, support_url):
+    if description and _has_visible_markdown_link(description, support_url):
         return []
     return [
-        "AnkiWeb description should include the GitHub repository URL as visible text "
-        f"({support_url}), not only as the support URL or a hidden Markdown link target"
+        "AnkiWeb description should include the GitHub repository URL as a clickable Markdown link "
+        f"with the full URL visible ({support_url}), not only as the support URL, a plain URL, "
+        "or a hidden Markdown link target"
     ]
 
 
-def _has_visible_url(markdown: str, url: str) -> bool:
+def _has_visible_markdown_link(markdown: str, url: str) -> bool:
     normalized_url = url.rstrip("/")
-    for match in re.finditer(re.escape(normalized_url), markdown):
-        start = match.start()
-        preceding = markdown[start - 1] if start > 0 else ""
-        if preceding != "(":
+    link_pattern = re.compile(r"\[([^\]]+)\]\(([^)\s]+)(?:\s+[^)]*)?\)")
+    for match in link_pattern.finditer(markdown):
+        label = match.group(1).strip().rstrip("/")
+        target = match.group(2).strip().rstrip("/")
+        if label == normalized_url and target == normalized_url:
             return True
     return False
 

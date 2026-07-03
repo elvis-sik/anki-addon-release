@@ -215,10 +215,18 @@ class PublishPlanTests(unittest.TestCase):
     def test_description_warning_accepts_visible_github_url(self) -> None:
         warnings = ankiweb_description_warnings(
             "https://github.com/example/addon",
-            "GitHub: https://github.com/example/addon\n",
+            "GitHub: [https://github.com/example/addon](https://github.com/example/addon)\n",
         )
 
         self.assertEqual(warnings, [])
+
+    def test_description_warning_rejects_plain_visible_github_url(self) -> None:
+        warnings = ankiweb_description_warnings(
+            "https://github.com/example/addon",
+            "GitHub: https://github.com/example/addon\n",
+        )
+
+        self.assertEqual(len(warnings), 1)
 
     def test_default_profile_dir_is_project_local(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

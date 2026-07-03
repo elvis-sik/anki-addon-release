@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 from typing import Literal
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -53,6 +54,12 @@ class DeckPublishPlan:
 class ListingText:
     title: str | None = None
     tags: str | None = None
+    support_url: str | None = None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class AnkiWebText:
     support_url: str | None = None
     description: str | None = None
 
@@ -172,6 +179,36 @@ def build_deck_publish_plan(
     )
 
 
+def resolve_addon_ankiweb_text(config: ReleaseConfig, manifest: ManifestReport) -> AnkiWebText:
+    listing = _listing_text(config.ankiweb.listing_file)
+    support_url = _short_text_value(
+        direct=config.ankiweb.support_url,
+        file_path=config.ankiweb.support_url_file,
+        field_name="support_url",
+    ) or listing.support_url
+    description = _text_value(
+        direct=config.ankiweb.description,
+        file_path=config.ankiweb.description_file,
+        field_name="description",
+    ) or listing.description
+    return AnkiWebText(support_url=support_url, description=description)
+
+
+def resolve_deck_ankiweb_text(config: ReleaseConfig) -> AnkiWebText:
+    listing = _listing_text(config.ankiweb.listing_file)
+    support_url = _short_text_value(
+        direct=config.ankiweb.support_url,
+        file_path=config.ankiweb.support_url_file,
+        field_name="support_url",
+    ) or listing.support_url
+    description = _text_value(
+        direct=config.ankiweb.description,
+        file_path=config.ankiweb.description_file,
+        field_name="description",
+    ) or listing.description
+    return AnkiWebText(support_url=support_url, description=description)
+
+
 def default_profile_dir(config: ReleaseConfig) -> Path:
     return config.ankiweb.profile_dir or (config.project_root / ".anki-addon-release" / "browser-profile")
 
@@ -198,6 +235,7 @@ def describe_publish_plan(plan: PublishPlan) -> list[str]:
         lines.append(f"branch_min_version: {plan.branch_min_version}")
     if plan.branch_max_version is not None:
         lines.append(f"branch_max_version: {plan.branch_max_version}")
+    lines.extend(f"warning: {warning}" for warning in ankiweb_description_warnings(plan.support_url, plan.description))
     return lines
 
 
@@ -220,7 +258,29 @@ def describe_deck_publish_plan(plan: DeckPublishPlan) -> list[str]:
         lines.append(f"tags: {plan.tags}")
     if plan.support_url:
         lines.append(f"support_url: {plan.support_url}")
+    lines.extend(f"warning: {warning}" for warning in ankiweb_description_warnings(plan.support_url, plan.description))
     return lines
+
+
+def ankiweb_description_warnings(support_url: str | None, description: str | None) -> list[str]:
+    if not support_url or "github.com/" not in support_url.lower():
+        return []
+    if description and _has_visible_url(description, support_url):
+        return []
+    return [
+        "AnkiWeb description should include the GitHub repository URL as visible text "
+        f"({support_url}), not only as the support URL or a hidden Markdown link target"
+    ]
+
+
+def _has_visible_url(markdown: str, url: str) -> bool:
+    normalized_url = url.rstrip("/")
+    for match in re.finditer(re.escape(normalized_url), markdown):
+        start = match.start()
+        preceding = markdown[start - 1] if start > 0 else ""
+        if preceding != "(":
+            return True
+    return False
 
 
 def resolve_source_deck_id(deck: DeckConfig) -> str:

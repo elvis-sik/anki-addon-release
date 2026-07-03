@@ -13,11 +13,14 @@ from .handoff import write_handoff
 from .manifest import load_manifest
 from .packager import build_plan, inspect_archive, write_package
 from .publish import (
+    ankiweb_description_warnings,
     build_deck_publish_plan,
     build_publish_plan,
     default_profile_dir,
     describe_deck_publish_plan,
     describe_publish_plan,
+    resolve_addon_ankiweb_text,
+    resolve_deck_ankiweb_text,
 )
 
 
@@ -96,6 +99,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     publish.add_argument("--base-url", help="override AnkiWeb base URL, useful for fake-server tests")
     publish.add_argument("--dry-run", action="store_true", help="print the publish plan only")
+    publish.add_argument(
+        "--preview-description",
+        action="store_true",
+        help="print the exact AnkiWeb Markdown description and exit without opening a browser",
+    )
     publish.add_argument("--submit", action="store_true", help="click the final submit button")
     publish.add_argument(
         "--confirm-copyright",
@@ -137,6 +145,8 @@ def _check(args: argparse.Namespace) -> int:
         )
         print(f"description: {_configured_text(config.ankiweb.description, config.ankiweb.description_file, fallback=listing_fallback)}")
         print(f"source_deck: {'configured' if _deck_source_configured(config) else 'not configured'}")
+        text = resolve_deck_ankiweb_text(config)
+        _print_warnings(ankiweb_description_warnings(text.support_url, text.description))
         return 0
 
     if config.manifest is None:
@@ -151,6 +161,8 @@ def _check(args: argparse.Namespace) -> int:
     print(f"files: {len(plan.files)}")
     for warning in manifest.warnings:
         print(f"warning: {warning}")
+    text = resolve_addon_ankiweb_text(config, manifest)
+    _print_warnings(ankiweb_description_warnings(text.support_url, text.description))
     return 0
 
 
@@ -211,6 +223,9 @@ def _publish(args: argparse.Namespace) -> int:
         )
         for line in describe_deck_publish_plan(publish_plan):
             print(line)
+        if args.preview_description:
+            _print_description_preview(publish_plan.description)
+            return 0
         if args.dry_run:
             return 0
 
@@ -240,6 +255,10 @@ def _publish(args: argparse.Namespace) -> int:
 
     for line in describe_publish_plan(publish_plan):
         print(line)
+
+    if args.preview_description:
+        _print_description_preview(publish_plan.description)
+        return 0
 
     if args.dry_run:
         return 0
@@ -304,6 +323,21 @@ def _login_before_publish(config, browser: AnkiWebBrowser, login_url: str) -> No
     result = browser.login(login_url, credentials=credentials, submit=True)
     print(f"login_status: {result.status}")
     print(f"login_final_url: {result.final_url}")
+
+
+def _print_description_preview(description: str | None) -> None:
+    if description is None:
+        print("description_markdown: (none)")
+        return
+    print("description_markdown:")
+    print("--- BEGIN DESCRIPTION ---")
+    print(description, end="" if description.endswith("\n") else "\n")
+    print("--- END DESCRIPTION ---")
+
+
+def _print_warnings(warnings: list[str]) -> None:
+    for warning in warnings:
+        print(f"warning: {warning}")
 
 
 def _add_browser_args(parser: argparse.ArgumentParser) -> None:

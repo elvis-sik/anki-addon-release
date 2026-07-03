@@ -6,14 +6,22 @@ from pathlib import Path
 import tempfile
 from threading import Thread
 import unittest
+from unittest.mock import patch
 
-from anki_addon_release.browser import AnkiWebBrowser, playwright_available
+from anki_addon_release.browser import AnkiWebBrowser, _pause_for_review, playwright_available
 from anki_addon_release.credentials import LoginCredentials
 from anki_addon_release.errors import PublishError
 from anki_addon_release.publish import DeckPublishPlan, PublishPlan
 
 
 RUN_BROWSER_TESTS = os.environ.get("ANKI_ADDON_RELEASE_BROWSER_TESTS") == "1"
+
+
+class BrowserHelperTests(unittest.TestCase):
+    def test_review_prompt_requires_interactive_terminal(self) -> None:
+        with patch("builtins.input", side_effect=EOFError):
+            with self.assertRaisesRegex(PublishError, "interactive terminal"):
+                _pause_for_review()
 
 
 @unittest.skipUnless(

@@ -383,8 +383,11 @@ def _save_update_metadata(page: object, plan: PublishPlan) -> None:
 def _pause_for_review() -> None:
     try:
         input("Review AnkiWeb form in the browser, then press Enter here to close: ")
-    except EOFError:
-        return
+    except EOFError as exc:
+        raise PublishError(
+            "prepared AnkiWeb form needs an interactive terminal for review; "
+            "rerun from a TTY, use --submit when ready, or use --dry-run/--preview-description"
+        ) from exc
 
 
 def _fill_version_range(page: object, min_version: str | None, max_version: str | None) -> None:

@@ -75,16 +75,23 @@ Use `sfw` when installing from public registries in this workspace.
 
 The framework never stores plain AnkiWeb credentials in config. Point project
 config at environment variable names, and put either plain values or 1Password
-secret references in a private `.env` file:
+secret references under those same names in a private `.env` file:
 
 ```bash
 ANKIWEB_EMAIL=op://Personal/AnkiWeb/username
 ANKIWEB_PASSWORD=op://Personal/AnkiWeb/password
 ```
 
-When a credential value starts with `op://`, `anki-addon-release` resolves it
-with `op read` only when the login or publish command needs it. Ordinary
-environment values still work, so CI can inject credentials without 1Password.
+For local development, prefer resolving those references at the process
+boundary with 1Password CLI:
+
+```bash
+op run --env-file=.env -- anki-addon-release publish
+```
+
+Ordinary environment values still work, so CI can inject credentials without
+1Password. Direct `op://` values are also accepted for compatibility when the
+CLI is run without `op run`.
 
 Reference the variable names in project config:
 
@@ -183,6 +190,8 @@ tags: geography maps
 support_url: https://github.com/example/geography-deck
 ---
 
+GitHub: https://github.com/example/geography-deck
+
 Markdown description for AnkiWeb.
 ```
 
@@ -190,6 +199,12 @@ You can point at another path with `listing_file`. Inline `title`, `tags`,
 `support_url`, and `description` values still work for small projects; explicit
 `title_file`, `tags_file`, `support_url_file`, and `description_file` overrides
 are available for unusual cases.
+
+When `support_url` is a GitHub repository, `check`, `publish --dry-run`, and
+browser publishing warn unless that exact GitHub URL is visibly present in the
+description body. Use visible text such as
+`GitHub: https://github.com/example/geography-deck`; do not rely only on the
+support URL field or a hidden Markdown link target.
 
 ## Configure A Deck
 
@@ -232,7 +247,9 @@ ANKIWEB_SOURCE_DECK_ID=1650000000000
 ```
 
 Both files are loaded automatically when present. Add them to every deck repo's
-`.gitignore`. Existing environment variables win over `.env` values.
+`.gitignore`. Existing environment variables win over `.env` values, which
+lets `op run --env-file=.env -- ...` resolve secrets before the framework reads
+project-local configuration.
 
 If you prefer not to store the numeric deck id, use a private deck name instead:
 
@@ -270,6 +287,12 @@ anki-addon-release publish --dry-run
 ```
 
 For deck targets, dry-run output redacts the private source deck id.
+
+Preview the exact AnkiWeb Markdown description without opening a browser:
+
+```bash
+anki-addon-release publish --preview-description
+```
 
 Build a regular-browser handoff bundle for Codex or a human:
 
@@ -317,7 +340,9 @@ Use `--mode create` for first-publish testing and `--mode update` for updating a
 
 The final AnkiWeb save/submit button is not clicked unless `--submit` is passed.
 That review-first behavior is the default. In headed browser mode, the prepared
-form stays open until you press Enter in the terminal.
+form stays open until you press Enter in the terminal. If the command is not
+attached to an interactive terminal, it fails loudly instead of briefly opening
+and closing the prepared form.
 
 Without installation, from this repository:
 
@@ -353,8 +378,8 @@ no API token is stored. To cut a release:
 ```bash
 # 1. bump `version` in pyproject.toml, commit
 # 2. tag and push -- the tag must match the version
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.2.2
+git push origin v0.2.2
 ```
 
 The [`release.yml`](.github/workflows/release.yml) workflow checks that the tag

@@ -11,6 +11,7 @@ from anki_addon_release.config import AnkiWebConfig, DeckConfig, ReleaseConfig
 from anki_addon_release.errors import PublishError
 from anki_addon_release.manifest import ManifestReport
 from anki_addon_release.publish import (
+    ankiweb_description_warnings,
     build_deck_publish_plan,
     build_publish_plan,
     default_profile_dir,
@@ -187,6 +188,37 @@ class PublishPlanTests(unittest.TestCase):
 
             self.assertIn("description: 16 chars", lines)
             self.assertIn("changelog: 7 chars", lines)
+
+    def test_describe_publish_plan_warns_when_github_url_is_hidden(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = ReleaseConfig(
+                project_root=root,
+                source_dir=root,
+                manifest=root / "manifest.json",
+                artifact_dir=root / "dist",
+                ankiweb=AnkiWebConfig(
+                    support_url="https://github.com/example/addon",
+                    description="[GitHub](https://github.com/example/addon)\n",
+                ),
+            )
+            manifest = ManifestReport(
+                path=root / "manifest.json",
+                data={"package": "new_addon", "name": "New Add-on"},
+                warnings=(),
+            )
+
+            lines = describe_publish_plan(build_publish_plan(config, manifest))
+
+            self.assertTrue(any(line.startswith("warning: ") for line in lines))
+
+    def test_description_warning_accepts_visible_github_url(self) -> None:
+        warnings = ankiweb_description_warnings(
+            "https://github.com/example/addon",
+            "GitHub: https://github.com/example/addon\n",
+        )
+
+        self.assertEqual(warnings, [])
 
     def test_default_profile_dir_is_project_local(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

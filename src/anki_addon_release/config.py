@@ -34,8 +34,11 @@ class AnkiWebConfig:
     addon_id: str | None = None
     shared_id: str | None = None
     title: str | None = None
+    title_file: Path | None = None
     tags: str | None = None
+    tags_file: Path | None = None
     support_url: str | None = None
+    support_url_file: Path | None = None
     description: str | None = None
     description_file: Path | None = None
     changelog: str | None = None
@@ -158,8 +161,23 @@ def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
     login_email_env = _optional_string(raw, "login_email_env")
     login_password_env = _optional_string(raw, "login_password_env")
 
-    description_file = _optional_path(root, raw, "description_file")
-    changelog_file = _optional_path(root, raw, "changelog_file")
+    title_file = _listing_file(root, raw, "title", direct=title, default_name="ankiweb-title.txt")
+    tags_file = _listing_file(root, raw, "tags", direct=tags, default_name="ankiweb-tags.txt")
+    support_url_file = _listing_file(
+        root,
+        raw,
+        "support_url",
+        direct=support_url,
+        default_name="ankiweb-support-url.txt",
+    )
+    description_file = _listing_file(
+        root,
+        raw,
+        "description",
+        direct=description,
+        default_name="ankiweb-description.md",
+    )
+    changelog_file = _listing_file(root, raw, "changelog", direct=changelog, default_name="ankiweb-changelog.md")
     profile_dir = _optional_path(root, raw, "profile_dir")
 
     return AnkiWebConfig(
@@ -167,8 +185,11 @@ def _ankiweb_config(root: Path, raw: object) -> AnkiWebConfig:
         addon_id=addon_id,
         shared_id=shared_id,
         title=title,
+        title_file=title_file,
         tags=tags,
+        tags_file=tags_file,
         support_url=support_url,
+        support_url_file=support_url_file,
         description=description,
         description_file=description_file,
         changelog=changelog,
@@ -230,6 +251,25 @@ def _optional_path(root: Path, table: dict[str, object], key: str) -> Path | Non
     if not path.is_absolute():
         path = root / path
     return path.resolve()
+
+
+def _listing_file(
+    root: Path,
+    table: dict[str, object],
+    field_name: str,
+    *,
+    direct: str | None,
+    default_name: str,
+) -> Path | None:
+    explicit = _optional_path(root, table, f"{field_name}_file")
+    if explicit is not None:
+        return explicit
+    if direct is not None:
+        return None
+    default = root / "release" / default_name
+    if default.exists():
+        return default.resolve()
+    return None
 
 
 def _optional_string(table: dict[str, object], key: str) -> str | None:

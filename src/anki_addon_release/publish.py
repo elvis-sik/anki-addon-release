@@ -60,7 +60,15 @@ def build_publish_plan(
 ) -> PublishPlan:
     selected_mode = _select_mode(mode, config.ankiweb.addon_id)
     base = (base_url or config.ankiweb.base_url).rstrip("/")
-    title = config.ankiweb.title or _manifest_string(manifest, "name")
+    title = (
+        _short_text_value(direct=config.ankiweb.title, file_path=config.ankiweb.title_file, field_name="title")
+        or _manifest_string(manifest, "name")
+    )
+    support_url = _short_text_value(
+        direct=config.ankiweb.support_url,
+        file_path=config.ankiweb.support_url_file,
+        field_name="support_url",
+    )
     description = _text_value(
         direct=config.ankiweb.description,
         file_path=config.ankiweb.description_file,
@@ -92,7 +100,7 @@ def build_publish_plan(
         artifact_path=(artifact_path or config.artifact_path).resolve(),
         addon_id=config.ankiweb.addon_id,
         title=title,
-        support_url=config.ankiweb.support_url,
+        support_url=support_url,
         description=description,
         changelog=changelog,
         submit=submit,
@@ -113,9 +121,15 @@ def build_deck_publish_plan(
 
     base = (base_url or config.ankiweb.base_url).rstrip("/")
     source_deck_id = resolve_source_deck_id(config.deck)
-    title = config.ankiweb.title
+    title = _short_text_value(direct=config.ankiweb.title, file_path=config.ankiweb.title_file, field_name="title")
     if not title:
-        raise PublishError("deck publishing requires ankiweb.title")
+        raise PublishError("deck publishing requires ankiweb.title or ankiweb.title_file")
+    tags = _short_text_value(direct=config.ankiweb.tags, file_path=config.ankiweb.tags_file, field_name="tags")
+    support_url = _short_text_value(
+        direct=config.ankiweb.support_url,
+        file_path=config.ankiweb.support_url_file,
+        field_name="support_url",
+    )
     description = _text_value(
         direct=config.ankiweb.description,
         file_path=config.ankiweb.description_file,
@@ -136,8 +150,8 @@ def build_deck_publish_plan(
         source_deck_id=source_deck_id,
         shared_id=config.ankiweb.shared_id,
         title=title,
-        tags=config.ankiweb.tags,
-        support_url=config.ankiweb.support_url,
+        tags=tags,
+        support_url=support_url,
         description=description,
         submit=submit,
         copyright_confirmed=copyright_confirmed,
@@ -307,3 +321,11 @@ def _text_value(*, direct: str | None, file_path: Path | None, field_name: str) 
     if not file_path.exists():
         raise PublishError(f"{field_name}_file not found: {file_path}")
     return file_path.read_text(encoding="utf-8")
+
+
+def _short_text_value(*, direct: str | None, file_path: Path | None, field_name: str) -> str | None:
+    value = _text_value(direct=direct, file_path=file_path, field_name=field_name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None

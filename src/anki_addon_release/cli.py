@@ -128,7 +128,9 @@ def _check(args: argparse.Namespace) -> int:
     if config.target == "deck":
         print(f"project: {config.project_root}")
         print("target: deck")
-        print(f"title: {config.ankiweb.title or '(missing)'}")
+        print(f"title: {_configured_text(config.ankiweb.title, config.ankiweb.title_file)}")
+        print(f"tags: {_configured_text(config.ankiweb.tags, config.ankiweb.tags_file)}")
+        print(f"support_url: {_configured_text(config.ankiweb.support_url, config.ankiweb.support_url_file)}")
         print(f"description: {_configured_text(config.ankiweb.description, config.ankiweb.description_file)}")
         print(f"source_deck: {'configured' if _deck_source_configured(config) else 'not configured'}")
         return 0

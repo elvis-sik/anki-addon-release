@@ -96,8 +96,12 @@ class PublishPlanTests(unittest.TestCase):
     def test_description_and_changelog_files_are_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            title = root / "TITLE.txt"
+            support_url = root / "SUPPORT_URL.txt"
             description = root / "README.md"
             changelog = root / "CHANGELOG.md"
+            title.write_text("File Title\n", encoding="utf-8")
+            support_url.write_text("https://github.com/example/file-title\n", encoding="utf-8")
             description.write_text("# Description\n", encoding="utf-8")
             changelog.write_text("## Changes\n", encoding="utf-8")
             config = ReleaseConfig(
@@ -106,6 +110,8 @@ class PublishPlanTests(unittest.TestCase):
                 manifest=root / "manifest.json",
                 artifact_dir=root / "dist",
                 ankiweb=AnkiWebConfig(
+                    title_file=title,
+                    support_url_file=support_url,
                     description_file=description,
                     changelog_file=changelog,
                 ),
@@ -118,6 +124,8 @@ class PublishPlanTests(unittest.TestCase):
 
             plan = build_publish_plan(config, manifest)
 
+            self.assertEqual(plan.title, "File Title")
+            self.assertEqual(plan.support_url, "https://github.com/example/file-title")
             self.assertEqual(plan.description, "# Description\n")
             self.assertEqual(plan.changelog, "## Changes\n")
 
@@ -160,7 +168,13 @@ class PublishPlanTests(unittest.TestCase):
     def test_deck_publish_plan_uses_env_private_source_and_redacts_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            title = root / "TITLE.txt"
+            tags = root / "TAGS.txt"
+            support_url = root / "SUPPORT_URL.txt"
             description = root / "README.md"
+            title.write_text("Geography Deck\n", encoding="utf-8")
+            tags.write_text("geography maps\n", encoding="utf-8")
+            support_url.write_text("https://github.com/example/geography-deck\n", encoding="utf-8")
             description.write_text("# Deck\n", encoding="utf-8")
             old = os.environ.get("ANKIWEB_SOURCE_DECK_ID")
             os.environ["ANKIWEB_SOURCE_DECK_ID"] = "1650000000000"
@@ -171,9 +185,9 @@ class PublishPlanTests(unittest.TestCase):
                     target="deck",
                     ankiweb=AnkiWebConfig(
                         shared_id="987654321",
-                        title="Geography Deck",
-                        tags="geography maps",
-                        support_url="https://github.com/example/geography-deck",
+                        title_file=title,
+                        tags_file=tags,
+                        support_url_file=support_url,
                         description_file=description,
                     ),
                     deck=DeckConfig(source_deck_id_env="ANKIWEB_SOURCE_DECK_ID", copyright_confirmed=True),

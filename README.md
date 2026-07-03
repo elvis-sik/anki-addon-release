@@ -27,7 +27,7 @@ Early public release. It has been dogfooded against the
 including AnkiWeb login, create/update form filling, support URL filling,
 branch compatibility fields, and local browser-flow regression tests.
 Deck publishing supports public/private config splitting: public repos can hold
-listing metadata, while `.anki-addon-release.local.toml` or `.env` holds the
+listing files, while `.anki-addon-release.local.toml` or `.env` holds the
 private Anki collection deck reference.
 It is published on PyPI via Trusted Publishing.
 
@@ -154,21 +154,38 @@ exclude = [
 [tool.anki-addon-release.ankiweb]
 # Omit addon_id for a first publish; set it for updates.
 addon_id = "1234567890"
-title = "Study Triage"
-support_url = "https://github.com/example/study-triage"
-description_file = "README.md"
-changelog_file = "CHANGELOG.md"
+title_file = "release/ankiweb-title.txt"
+support_url_file = "release/ankiweb-support-url.txt"
+description_file = "release/ankiweb-description.md"
+changelog_file = "release/ankiweb-changelog.md"
 login_email_env = "ANKIWEB_EMAIL"
 login_password_env = "ANKIWEB_PASSWORD"
 ```
 
 `include` is optional. When omitted, the whole `source_dir` is considered and `exclude` filters out development files.
 
+## AnkiWeb Listing Files
+
+Put public-facing listing copy in regular files so agents and humans can edit it
+without turning TOML into a prose document:
+
+- `release/ankiweb-title.txt`
+- `release/ankiweb-tags.txt`
+- `release/ankiweb-support-url.txt`
+- `release/ankiweb-description.md`
+- `release/ankiweb-changelog.md`
+
+When those files exist, they are loaded by default. You can also point at custom
+paths with `title_file`, `tags_file`, `support_url_file`, `description_file`,
+and `changelog_file`. Inline `title`, `tags`, `support_url`, `description`, and
+`changelog` values still work for small projects; setting both an inline value
+and its matching `*_file` is an error.
+
 ## Configure A Deck
 
 AnkiWeb shares decks from the logged-in user's synced collection. To avoid
 leaking private collection structure, keep the public listing metadata in
-`pyproject.toml`, and keep the collection deck id/name in local config or env.
+listing files, and keep the collection deck id/name in local config or env.
 
 Public `pyproject.toml`:
 
@@ -179,9 +196,9 @@ target = "deck"
 [tool.anki-addon-release.ankiweb]
 # Optional. Record the public shared item id once known.
 shared_id = "1234567890"
-title = "Geography Deck"
-tags = "geography maps"
-support_url = "https://github.com/example/geography-deck"
+title_file = "release/ankiweb-title.txt"
+tags_file = "release/ankiweb-tags.txt"
+support_url_file = "release/ankiweb-support-url.txt"
 description_file = "release/ankiweb-description.md"
 login_email_env = "ANKIWEB_EMAIL"
 login_password_env = "ANKIWEB_PASSWORD"
@@ -327,8 +344,8 @@ no API token is stored. To cut a release:
 ```bash
 # 1. bump `version` in pyproject.toml, commit
 # 2. tag and push -- the tag must match the version
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The [`release.yml`](.github/workflows/release.yml) workflow checks that the tag

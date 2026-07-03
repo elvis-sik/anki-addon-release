@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import unittest
 from unittest.mock import patch
 
-from anki_addon_release.credentials import resolve_env_credentials
+from anki_addon_release.credentials import resolve_env_credentials, resolve_present_env_credentials
 from anki_addon_release.errors import PublishError
 
 
@@ -23,6 +24,57 @@ class CredentialTests(unittest.TestCase):
         self.assertEqual(credentials.email, "user@example.com")
         self.assertEqual(credentials.password, "secret")
 
+    @patch("anki_addon_release.credentials.subprocess.run")
+    def test_resolves_one_password_references_from_environment(self, run) -> None:
+        run.side_effect = [
+            subprocess.CompletedProcess(["op", "read"], 0, stdout="user@example.com\n", stderr=""),
+            subprocess.CompletedProcess(["op", "read"], 0, stdout="secret\n", stderr=""),
+        ]
+
+        with patch.dict(
+            os.environ,
+            {
+                "ANKIWEB_EMAIL": "op://Personal/AnkiWeb/username",
+                "ANKIWEB_PASSWORD": "op://Personal/AnkiWeb/password",
+            },
+        ):
+            credentials = resolve_env_credentials(
+                email_env="ANKIWEB_EMAIL",
+                password_env="ANKIWEB_PASSWORD",
+            )
+
+        self.assertIsNotNone(credentials)
+        self.assertEqual(credentials.email, "user@example.com")
+        self.assertEqual(credentials.password, "secret")
+        run.assert_any_call(
+            ["op", "read", "op://Personal/AnkiWeb/username"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    @patch("anki_addon_release.credentials.subprocess.run")
+    def test_one_password_reference_error_does_not_include_secret_value(self, run) -> None:
+        run.return_value = subprocess.CompletedProcess(
+            ["op", "read"],
+            1,
+            stdout="",
+            stderr="item or field not found\n",
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "ANKIWEB_EMAIL": "op://Personal/AnkiWeb/username",
+                "ANKIWEB_PASSWORD": "op://Personal/AnkiWeb/password",
+            },
+        ):
+            with self.assertRaisesRegex(PublishError, "ANKIWEB_EMAIL"):
+                resolve_env_credentials(
+                    email_env="ANKIWEB_EMAIL",
+                    password_env="ANKIWEB_PASSWORD",
+                )
+
     def test_requires_env_names_together(self) -> None:
         with self.assertRaises(PublishError):
             resolve_env_credentials(email_env="ANKIWEB_EMAIL", password_env=None)
@@ -35,7 +87,23 @@ class CredentialTests(unittest.TestCase):
                     password_env="ANKIWEB_PASSWORD",
                 )
 
+    def test_present_credentials_can_be_absent_for_existing_browser_session(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(
+                resolve_present_env_credentials(
+                    email_env="ANKIWEB_EMAIL",
+                    password_env="ANKIWEB_PASSWORD",
+                )
+            )
+
+    def test_present_credentials_error_when_partially_absent(self) -> None:
+        with patch.dict(os.environ, {"ANKIWEB_EMAIL": "user@example.com"}, clear=True):
+            with self.assertRaisesRegex(PublishError, "ANKIWEB_PASSWORD"):
+                resolve_present_env_credentials(
+                    email_env="ANKIWEB_EMAIL",
+                    password_env="ANKIWEB_PASSWORD",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
-

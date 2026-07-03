@@ -6,7 +6,7 @@ import sys
 
 from .config import load_config
 from .browser import AnkiWebBrowser
-from .credentials import resolve_env_credentials
+from .credentials import resolve_env_credentials, resolve_present_env_credentials
 from .envfile import load_env_file
 from .errors import ReleaseError
 from .handoff import write_handoff
@@ -215,6 +215,7 @@ def _publish(args: argparse.Namespace) -> int:
             return 0
 
         browser = _browser(args, config)
+        _login_before_publish(config, browser, publish_plan.login_url)
         result = browser.publish_deck(publish_plan)
         print(f"status: {result.status}")
         print(f"final_url: {result.final_url}")
@@ -247,6 +248,7 @@ def _publish(args: argparse.Namespace) -> int:
     print(f"built: {artifact}")
 
     browser = _browser(args, config)
+    _login_before_publish(config, browser, publish_plan.login_url)
     result = browser.publish(publish_plan)
     print(f"status: {result.status}")
     print(f"final_url: {result.final_url}")
@@ -289,6 +291,19 @@ def _handoff(args: argparse.Namespace) -> int:
     for path in result.files:
         print(f"wrote: {path}")
     return 0
+
+
+def _login_before_publish(config, browser: AnkiWebBrowser, login_url: str) -> None:
+    credentials = resolve_present_env_credentials(
+        email_env=config.ankiweb.login_email_env,
+        password_env=config.ankiweb.login_password_env,
+    )
+    if credentials is None:
+        return
+
+    result = browser.login(login_url, credentials=credentials, submit=True)
+    print(f"login_status: {result.status}")
+    print(f"login_final_url: {result.final_url}")
 
 
 def _add_browser_args(parser: argparse.ArgumentParser) -> None:

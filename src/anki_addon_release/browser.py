@@ -453,6 +453,19 @@ def _fill_locator(locator: object, value: str) -> None:
         locator.evaluate("(element) => element.dispatchEvent(new Event('change', { bubbles: true }))")
     except Exception:
         pass
+    try:
+        locator.evaluate(
+            """(element) => {
+                if (typeof element.scrollTop === "number") {
+                    element.scrollTop = 0;
+                }
+                if (typeof element.setSelectionRange === "function") {
+                    element.setSelectionRange(0, 0);
+                }
+            }"""
+        )
+    except Exception:
+        pass
 
 
 def _fill_text_after_wait(page: object, candidates: tuple[str, ...], value: str) -> bool:

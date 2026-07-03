@@ -73,23 +73,31 @@ Use `sfw` when installing from public registries in this workspace.
 
 ### Credentials
 
-The framework never calls 1Password, reads password-manager references, or stores
-AnkiWeb credentials in config. If you want automated login, resolve secrets
-outside the process and expose plain environment variables only for the command
-that needs them:
+The framework never stores plain AnkiWeb credentials in config. Point project
+config at environment variable names, and put either plain values or 1Password
+secret references in a private `.env` file:
 
 ```bash
-export ANKIWEB_EMAIL="$(op read op://Private/AnkiWeb/email)"
-export ANKIWEB_PASSWORD="$(op read op://Private/AnkiWeb/password)"
+ANKIWEB_EMAIL=op://Personal/AnkiWeb/username
+ANKIWEB_PASSWORD=op://Personal/AnkiWeb/password
 ```
 
-Then reference the variable names in project config:
+When a credential value starts with `op://`, `anki-addon-release` resolves it
+with `op read` only when the login or publish command needs it. Ordinary
+environment values still work, so CI can inject credentials without 1Password.
+
+Reference the variable names in project config:
 
 ```toml
 [tool.anki-addon-release.ankiweb]
 login_email_env = "ANKIWEB_EMAIL"
 login_password_env = "ANKIWEB_PASSWORD"
 ```
+
+`publish` uses these values automatically when they are present, logging into
+the persistent browser profile before opening the add-on upload or deck share
+form. If neither variable is present, `publish` keeps using the existing browser
+session in the profile.
 
 or pass them on the command line:
 
@@ -218,6 +226,8 @@ copyright_confirmed = true
 or private `.env`:
 
 ```bash
+ANKIWEB_EMAIL=op://Personal/AnkiWeb/username
+ANKIWEB_PASSWORD=op://Personal/AnkiWeb/password
 ANKIWEB_SOURCE_DECK_ID=1650000000000
 ```
 

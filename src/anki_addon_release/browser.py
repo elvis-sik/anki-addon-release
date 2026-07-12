@@ -114,7 +114,7 @@ class AnkiWebBrowser:
 
                 if plan.submit:
                     _click_submit(page)
-                    page.wait_for_load_state("networkidle")
+                    _wait_for_addon_submission(page)
                     if plan.mode == "update":
                         _save_update_metadata(page, plan)
                     status = "submitted"
@@ -377,7 +377,25 @@ def _save_update_metadata(page: object, plan: PublishPlan) -> None:
     _ensure_upload_form(page)
     _fill_form(page, plan, include_artifact=False)
     _click_submit(page)
-    page.wait_for_load_state("networkidle")
+    _wait_for_addon_submission(page)
+
+
+def _wait_for_addon_submission(page: object) -> None:
+    try:
+        page.wait_for_function(
+            """
+            () => location.pathname.startsWith('/shared/info/')
+                || !document.querySelector('input[type="file"]')
+            """
+        )
+        _wait_for_frontend(page)
+    except Exception as exc:
+        try:
+            body = page.locator("body").inner_text(timeout=1_000).strip()
+        except Exception:
+            body = ""
+        detail = f": {body[:500]}" if body else ""
+        raise PublishError(f"AnkiWeb did not confirm the add-on submission{detail}") from exc
 
 
 def _pause_for_review() -> None:

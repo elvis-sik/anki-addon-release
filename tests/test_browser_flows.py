@@ -131,6 +131,30 @@ class BrowserFlowTests(unittest.TestCase):
             self.assertIn(b"123456789", server.last_post_body)
             self.assertIn(b"Bug fixes", server.last_post_body)
 
+    def test_addon_submit_fails_when_ankiweb_leaves_the_upload_form_open(self) -> None:
+        with FakeAnkiWebServer(keep_upload_form_after_post=True) as server, tempfile.TemporaryDirectory() as tmp:
+            artifact = _artifact(Path(tmp))
+            plan = PublishPlan(
+                mode="create",
+                base_url=server.url,
+                upload_url=f"{server.url}/shared/addons/create",
+                login_url=f"{server.url}/account/login",
+                artifact_path=artifact,
+                addon_id=None,
+                title="Study Triage",
+                support_url=None,
+                description="Description text",
+                changelog=None,
+                submit=True,
+            )
+
+            with self.assertRaisesRegex(PublishError, "did not confirm"):
+                AnkiWebBrowser(
+                    profile_dir=Path(tmp) / "profile",
+                    headless=True,
+                    timeout_ms=250,
+                ).publish(plan)
+
     def test_account_too_new_blocker_is_reported(self) -> None:
         with FakeAnkiWebServer() as server, tempfile.TemporaryDirectory() as tmp:
             artifact = _artifact(Path(tmp))
@@ -187,8 +211,9 @@ class BrowserFlowTests(unittest.TestCase):
 
 
 class FakeAnkiWebServer:
-    def __init__(self, *, login_is_logged_in: bool = False) -> None:
+    def __init__(self, *, login_is_logged_in: bool = False, keep_upload_form_after_post: bool = False) -> None:
         self.login_is_logged_in = login_is_logged_in
+        self.keep_upload_form_after_post = keep_upload_form_after_post
 
     def __enter__(self) -> FakeAnkiWebServer:
         self.last_post_path = ""
@@ -233,7 +258,7 @@ class FakeAnkiWebServer:
                 owner.post_paths.append(handler.path)
                 owner.last_post_body = handler.rfile.read(length)
                 owner.post_bodies.append(owner.last_post_body)
-                body = _logged_in_page()
+                body = _create_form() if owner.keep_upload_form_after_post else _logged_in_page()
                 handler.send_response(200)
                 handler.send_header("Content-Type", "text/html; charset=utf-8")
                 handler.send_header("Content-Length", str(len(body)))

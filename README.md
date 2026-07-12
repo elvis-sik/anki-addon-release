@@ -143,6 +143,87 @@ Two AnkiWeb account lifecycle rules matter for that pattern:
   not subject to the usual data expiry, but keeping the publishing account
   active avoids losing account access or release ownership context.
 
+### Isolated AnkiWeb Publisher Collection
+
+An established AnkiWeb account can also act as the publisher identity without
+being the account used by a daily Anki installation. The `publisher` commands
+create a persistent, separate Anki base directory. Its `Publisher` profile has
+its custom sync URL explicitly cleared, so it syncs with AnkiWeb rather than a
+self-hosted sync server.
+
+It is intentionally not a disposable `anki-addon-workbench` profile: it holds
+the small collection of deck copies that AnkiWeb needs in order to share and
+update them. It does not read, write, or reuse the daily Anki profile.
+
+Initialize it once. The default macOS base is
+`~/Library/Application Support/anki-addon-release/publisher`; override it with
+`--publisher-base` or `ANKI_PUBLISHER_BASE` if desired.
+
+```bash
+anki-addon-release publisher init
+anki-addon-release publisher status
+anki-addon-release publisher launch
+```
+
+The initializer copies the local AnkiConnect add-on into the isolated base,
+excluding its managed metadata and user files, and assigns it port `8766` so it
+never collides with a daily Anki profile's usual `8765`. On first launch, sign in to the
+existing AnkiWeb account and complete the initial sync interactively. For a
+repeatable one-shot login that never writes the credentials to disk, resolve the
+existing 1Password references only for the launch process:
+
+```bash
+op run --env-file=/path/to/private/.env -- \
+  anki-addon-release publisher launch \
+  --login-email-env ANKIWEB_EMAIL \
+  --login-password-env ANKIWEB_PASSWORD
+```
+
+The launcher injects a small inert helper into the publisher profile. Only when
+both login flags are supplied does it read the child process environment, log in
+through Anki's own sync flow, and erase those values from its environment. If
+Anki asks which side should win during the first sync, choose **Download**. Do
+not remove any decks yet.
+
+After that first sync, create a portable snapshot before any cleanup. The
+database portion is captured with SQLite's online backup API; run this while
+Anki is idle, not while it is syncing or changing media.
+
+```bash
+anki-addon-release publisher backup
+```
+
+The archive contains `collection.anki2`, all collection media, and a small
+manifest. It does not contain credentials.
+
+The repeatable deck-transfer lane is:
+
+```bash
+# With the source collection open (for example, the private sync profile on 8765):
+anki-addon-release publisher export \
+  --deck-name 'Source::Deck' \
+  --out /private/tmp/source-deck.apkg
+
+# Launch the isolated publisher profile, then import and register its local id.
+anki-addon-release publisher launch
+anki-addon-release publisher import /private/tmp/source-deck.apkg \
+  --deck-name 'Source::Deck' \
+  --register-env-file /path/to/project/.env \
+  --register-env-var ANKIWEB_SOURCE_DECK_ID
+anki-addon-release publisher sync
+```
+
+`publisher sync` starts Anki's own sync through AnkiConnect. Wait for Anki to
+report its result before continuing. `publisher verify` lists the deck names and
+ids visible to the open publisher profile on `8766`, and `publisher deck-id` returns one
+id. Once the ID is registered in the project's private `.env`, ordinary
+`publish` continues to use the existing review-first AnkiWeb form automation.
+
+For listings that are already shared, retain their existing publisher-side deck
+copies and IDs until an update has been verified. Replacing a deck wholesale
+before understanding AnkiWeb's update linkage can create a second listing
+instead of updating the original one.
+
 ## Configure An Add-on
 
 Add a section like this to the add-on repository's `pyproject.toml`:

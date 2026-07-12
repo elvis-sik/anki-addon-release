@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 import sys
 
@@ -21,6 +23,27 @@ from .publish import (
     describe_publish_plan,
     resolve_addon_ankiweb_text,
     resolve_deck_ankiweb_text,
+)
+from .publisher import (
+    DEFAULT_ANKI_CONNECT_URL,
+    DEFAULT_PUBLISHER_ANKI_CONNECT_PORT,
+    DEFAULT_PUBLISHER_ANKI_CONNECT_URL,
+    PublisherPaths,
+    backup_publisher_collection,
+    deck_id_for_name,
+    default_anki_bin,
+    default_anki_connect_source,
+    default_anki_python,
+    default_publisher_base,
+    default_publisher_profile,
+    export_deck,
+    import_deck,
+    initialize_publisher,
+    launch_publisher,
+    publisher_decks,
+    publisher_status,
+    register_deck_id,
+    start_sync,
 )
 
 
@@ -126,6 +149,61 @@ def _parser() -> argparse.ArgumentParser:
     handoff.add_argument("--base-url", help="override AnkiWeb base URL")
     handoff.add_argument("--out-dir", type=Path, help="handoff output directory")
     handoff.set_defaults(func=_handoff)
+
+    publisher = subparsers.add_parser(
+        "publisher",
+        help="manage the isolated, AnkiWeb-only publishing collection",
+    )
+    _add_publisher_args(publisher)
+    publisher_subparsers = publisher.add_subparsers(dest="publisher_command", required=True)
+
+    publisher_init = publisher_subparsers.add_parser("init", help="create the isolated publisher profile")
+    publisher_init.add_argument("--anki-python", help="Anki's bundled Python interpreter")
+    publisher_init.add_argument("--anki-connect-source", type=Path, help="existing AnkiConnect add-on directory")
+    publisher_init.add_argument("--anki-connect-port", type=int, default=DEFAULT_PUBLISHER_ANKI_CONNECT_PORT)
+    publisher_init.set_defaults(func=_publisher_init)
+
+    publisher_status_command = publisher_subparsers.add_parser("status", help="report publisher-profile readiness")
+    publisher_status_command.set_defaults(func=_publisher_status)
+
+    publisher_backup = publisher_subparsers.add_parser("backup", help="write a portable publisher collection backup")
+    publisher_backup.add_argument("--out", type=Path, help="destination .zip; defaults under the publisher base")
+    publisher_backup.set_defaults(func=_publisher_backup)
+
+    publisher_launch = publisher_subparsers.add_parser("launch", help="launch the isolated publisher Anki profile")
+    publisher_launch.add_argument("--anki-bin", help="Anki launcher binary")
+    publisher_launch.add_argument("--anki-connect-port", type=int, default=DEFAULT_PUBLISHER_ANKI_CONNECT_PORT)
+    publisher_launch.add_argument("--login-email-env", help="environment variable with the AnkiWeb email for one-shot login")
+    publisher_launch.add_argument("--login-password-env", help="environment variable with the AnkiWeb password for one-shot login")
+    publisher_launch.set_defaults(func=_publisher_launch)
+
+    publisher_deck_id = publisher_subparsers.add_parser("deck-id", help="print one publisher deck's id")
+    publisher_deck_id.add_argument("--anki-connect-url", default=DEFAULT_PUBLISHER_ANKI_CONNECT_URL)
+    publisher_deck_id.add_argument("--deck-name", required=True)
+    publisher_deck_id.set_defaults(func=_publisher_deck_id)
+
+    publisher_export = publisher_subparsers.add_parser("export", help="export a deck from an open Anki profile")
+    publisher_export.add_argument("--anki-connect-url", default=DEFAULT_ANKI_CONNECT_URL)
+    publisher_export.add_argument("--deck-name", required=True)
+    publisher_export.add_argument("--out", type=Path, required=True)
+    publisher_export.add_argument("--include-scheduling", action="store_true")
+    publisher_export.set_defaults(func=_publisher_export)
+
+    publisher_import = publisher_subparsers.add_parser("import", help="import an APKG into the open publisher profile")
+    publisher_import.add_argument("package", type=Path)
+    publisher_import.add_argument("--anki-connect-url", default=DEFAULT_PUBLISHER_ANKI_CONNECT_URL)
+    publisher_import.add_argument("--deck-name", help="publisher deck name to verify and register after import")
+    publisher_import.add_argument("--register-env-file", type=Path, help="private .env file to update with the publisher deck id")
+    publisher_import.add_argument("--register-env-var", help="source-deck env variable to set")
+    publisher_import.set_defaults(func=_publisher_import)
+
+    publisher_sync = publisher_subparsers.add_parser("sync", help="ask the open publisher profile to start AnkiWeb sync")
+    publisher_sync.add_argument("--anki-connect-url", default=DEFAULT_PUBLISHER_ANKI_CONNECT_URL)
+    publisher_sync.set_defaults(func=_publisher_sync)
+
+    publisher_verify = publisher_subparsers.add_parser("verify", help="list decks visible in the open publisher profile")
+    publisher_verify.add_argument("--anki-connect-url", default=DEFAULT_PUBLISHER_ANKI_CONNECT_URL)
+    publisher_verify.set_defaults(func=_publisher_verify)
 
     return parser
 
@@ -312,6 +390,110 @@ def _handoff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _publisher_paths(args: argparse.Namespace) -> PublisherPaths:
+    return PublisherPaths(base=args.publisher_base.expanduser(), profile=args.publisher_profile)
+
+
+def _publisher_init(args: argparse.Namespace) -> int:
+    paths = _publisher_paths(args)
+    anki_bin = default_anki_bin()
+    anki_python = args.anki_python or default_anki_python(anki_bin)
+    if anki_python is None:
+        raise ReleaseError("could not locate Anki's bundled Python; pass publisher init --anki-python")
+    initialize_publisher(
+        paths,
+        anki_python=anki_python,
+        anki_connect_source=args.anki_connect_source or default_anki_connect_source(),
+        anki_connect_port=args.anki_connect_port,
+    )
+    print(f"initialized: {paths.base}")
+    print(f"profile: {paths.profile}")
+    print("sync_target: AnkiWeb (custom sync URL cleared)")
+    return 0
+
+
+def _publisher_status(args: argparse.Namespace) -> int:
+    print(json.dumps(publisher_status(_publisher_paths(args)), indent=2, sort_keys=True))
+    return 0
+
+
+def _publisher_backup(args: argparse.Namespace) -> int:
+    backup = backup_publisher_collection(_publisher_paths(args), output=args.out)
+    print(backup)
+    return 0
+
+
+def _publisher_launch(args: argparse.Namespace) -> int:
+    credentials = _publisher_login_credentials(args)
+    process, command = launch_publisher(
+        _publisher_paths(args),
+        anki_bin=args.anki_bin or default_anki_bin(),
+        login_credentials=credentials,
+        anki_connect_port=args.anki_connect_port,
+    )
+    print(f"pid: {process.pid}")
+    print(f"command: {' '.join(command)}")
+    if credentials is not None:
+        print("AnkiWeb login started from the process environment; choose Download if Anki asks for initial sync direction")
+    return 0
+
+
+def _publisher_deck_id(args: argparse.Namespace) -> int:
+    print(deck_id_for_name(args.anki_connect_url, args.deck_name))
+    return 0
+
+
+def _publisher_export(args: argparse.Namespace) -> int:
+    output = export_deck(
+        args.anki_connect_url,
+        deck_name=args.deck_name,
+        output=args.out,
+        include_scheduling=args.include_scheduling,
+    )
+    print(output)
+    return 0
+
+
+def _publisher_import(args: argparse.Namespace) -> int:
+    if bool(args.register_env_file) != bool(args.register_env_var):
+        raise ReleaseError("publisher import registration requires both --register-env-file and --register-env-var")
+    if args.register_env_file and not args.deck_name:
+        raise ReleaseError("publisher import registration also requires --deck-name")
+
+    import_deck(args.anki_connect_url, args.package)
+    print(f"imported: {args.package.resolve()}")
+    if args.deck_name:
+        deck_id = deck_id_for_name(args.anki_connect_url, args.deck_name)
+        print(f"deck_id: {deck_id}")
+        if args.register_env_file and args.register_env_var:
+            register_deck_id(args.register_env_file, variable=args.register_env_var, deck_id=deck_id)
+            print(f"registered: {args.register_env_var} in {args.register_env_file}")
+    return 0
+
+
+def _publisher_sync(args: argparse.Namespace) -> int:
+    start_sync(args.anki_connect_url)
+    print("sync_started: wait for Anki to report completion before publishing")
+    return 0
+
+
+def _publisher_verify(args: argparse.Namespace) -> int:
+    print(json.dumps(publisher_decks(args.anki_connect_url), indent=2, sort_keys=True))
+    return 0
+
+
+def _publisher_login_credentials(args: argparse.Namespace) -> tuple[str, str] | None:
+    if bool(args.login_email_env) != bool(args.login_password_env):
+        raise ReleaseError("publisher launch login requires both --login-email-env and --login-password-env")
+    if not args.login_email_env:
+        return None
+    email = os.environ.get(args.login_email_env)
+    password = os.environ.get(args.login_password_env)
+    if not email or not password:
+        raise ReleaseError("publisher launch could not find both requested login environment variables")
+    return email, password
+
+
 def _login_before_publish(config, browser: AnkiWebBrowser, login_url: str) -> None:
     credentials = resolve_present_env_credentials(
         email_env=config.ankiweb.login_email_env,
@@ -346,6 +528,20 @@ def _add_browser_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timeout-ms", type=int, default=15_000, help="browser action timeout")
     parser.add_argument("--slow-mo-ms", type=int, default=0, help="slow browser actions for observation")
     parser.add_argument("--diagnostics-dir", type=Path, help="write screenshots to this directory")
+
+
+def _add_publisher_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--publisher-base",
+        type=Path,
+        default=default_publisher_base(),
+        help="persistent Anki base directory for the isolated publishing collection",
+    )
+    parser.add_argument(
+        "--publisher-profile",
+        default=default_publisher_profile(),
+        help="profile name inside the isolated publishing base",
+    )
 
 
 def _browser(args: argparse.Namespace, config: object) -> AnkiWebBrowser:

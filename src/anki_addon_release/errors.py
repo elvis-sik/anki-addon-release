@@ -16,3 +16,7 @@ class PackageError(ReleaseError):
 
 class PublishError(ReleaseError):
     """Raised when an AnkiWeb publishing flow cannot complete safely."""
+
+
+class PublisherError(ReleaseError):
+    """Raised when publisher-profile setup or transfer cannot complete safely."""

@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+import os
+
+from aqt import gui_hooks, mw
+from aqt.qt import QTimer
+from aqt.sync import sync_login
+
+
+LOGIN_FLAG = "ANKI_ADDON_RELEASE_PUBLISHER_LOGIN"
+EMAIL_ENV = "ANKI_ADDON_RELEASE_PUBLISHER_EMAIL"
+PASSWORD_ENV = "ANKI_ADDON_RELEASE_PUBLISHER_PASSWORD"
+
+
+def _login_from_environment() -> None:
+    if os.environ.pop(LOGIN_FLAG, None) != "1":
+        return
+    email = os.environ.pop(EMAIL_ENV, "")
+    password = os.environ.pop(PASSWORD_ENV, "")
+    if not email or not password:
+        return
+    sync_login(mw, mw.on_sync_button_clicked, email, password)
+
+
+def _on_profile_open() -> None:
+    QTimer.singleShot(0, _login_from_environment)
+
+
+gui_hooks.profile_did_open.append(_on_profile_open)

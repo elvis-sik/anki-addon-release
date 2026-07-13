@@ -174,6 +174,7 @@ def launch_publisher(
     *,
     anki_bin: str,
     login_credentials: tuple[str, str] | None = None,
+    check_database: bool = False,
     anki_connect_port: int = DEFAULT_PUBLISHER_ANKI_CONNECT_PORT,
 ) -> tuple[subprocess.Popen[str], list[str]]:
     if not publisher_status(paths)["initialized"]:
@@ -195,8 +196,11 @@ def launch_publisher(
     ]
     env = os.environ.copy()
     env["ANKI_SINGLE_INSTANCE_KEY"] = f"anki-addon-release-publisher-{uuid.uuid4().hex}"
-    if login_credentials is not None:
+    if login_credentials is not None or check_database:
         _ensure_login_addon(paths)
+    if check_database:
+        env["ANKI_ADDON_RELEASE_PUBLISHER_CHECK_DATABASE"] = "1"
+    if login_credentials is not None:
         env["ANKI_ADDON_RELEASE_PUBLISHER_LOGIN"] = "1"
         env["ANKI_ADDON_RELEASE_PUBLISHER_EMAIL"] = login_credentials[0]
         env["ANKI_ADDON_RELEASE_PUBLISHER_PASSWORD"] = login_credentials[1]
@@ -268,7 +272,15 @@ def import_deck(url: str, package: Path) -> None:
 
 
 def start_sync(url: str) -> None:
-    anki_connect_request(url, "sync")
+    try:
+        anki_connect_request(url, "sync")
+    except ReleaseError as exc:
+        if "Sync status 2" in str(exc):
+            raise ReleaseError(
+                "Anki requires a one-way sync. In the isolated Publisher profile, choose Upload to AnkiWeb only "
+                "after confirming that this publisher copy is the intended source."
+            ) from exc
+        raise
 
 
 def configure_anki_connect(paths: PublisherPaths, *, port: int) -> None:

@@ -197,6 +197,17 @@ The archive is deliberately uncompressed so large collections finish backing
 up promptly. It contains `collection.anki2`, all collection media, and a small
 manifest. It does not contain credentials.
 
+If Anki requires a database check before a publisher sync, close the Publisher
+window and relaunch only that isolated profile with:
+
+```bash
+anki-addon-release publisher launch --check-database
+```
+
+After Anki finishes opening, retry `publisher sync`.
+If Anki then requires a one-way sync, choose **Upload to AnkiWeb** only when the
+isolated Publisher collection is the intended source of truth.
+
 The repeatable deck-transfer lane is:
 
 ```bash

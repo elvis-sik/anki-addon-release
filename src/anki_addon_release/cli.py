@@ -175,6 +175,7 @@ def _parser() -> argparse.ArgumentParser:
     publisher_launch.add_argument("--anki-connect-port", type=int, default=DEFAULT_PUBLISHER_ANKI_CONNECT_PORT)
     publisher_launch.add_argument("--login-email-env", help="environment variable with the AnkiWeb email for one-shot login")
     publisher_launch.add_argument("--login-password-env", help="environment variable with the AnkiWeb password for one-shot login")
+    publisher_launch.add_argument("--check-database", action="store_true", help="run Anki's Check Database in the isolated profile after launch")
     publisher_launch.set_defaults(func=_publisher_launch)
 
     publisher_deck_id = publisher_subparsers.add_parser("deck-id", help="print one publisher deck's id")
@@ -429,12 +430,15 @@ def _publisher_launch(args: argparse.Namespace) -> int:
         _publisher_paths(args),
         anki_bin=args.anki_bin or default_anki_bin(),
         login_credentials=credentials,
+        check_database=args.check_database,
         anki_connect_port=args.anki_connect_port,
     )
     print(f"pid: {process.pid}")
     print(f"command: {' '.join(command)}")
     if credentials is not None:
         print("AnkiWeb login started from the process environment; choose Download if Anki asks for initial sync direction")
+    if args.check_database:
+        print("Anki Check Database started in the isolated publisher profile")
     return 0
 
 

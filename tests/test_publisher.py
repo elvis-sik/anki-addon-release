@@ -16,6 +16,7 @@ from anki_addon_release.publisher import (
     launch_publisher,
     publisher_status,
     register_deck_id,
+    start_sync,
 )
 
 
@@ -113,6 +114,29 @@ class PublisherTests(unittest.TestCase):
             self.assertIn("publisher_run_anki.py", command[1])
             self.assertEqual(command[-4:], ["-p", "Publisher", "--lang", "en"])
             self.assertEqual(popen.call_args.kwargs["env"]["ANKI_SINGLE_INSTANCE_KEY"].startswith("anki-addon-release-publisher-"), True)
+
+    def test_launch_can_request_database_check_in_publisher_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = PublisherPaths(base=Path(temporary) / "publisher", profile="Publisher")
+            paths.base.mkdir()
+            (paths.base / "prefs21.db").write_bytes(b"prefs")
+            paths.anki_connect_dir.mkdir(parents=True)
+            paths.anki_connect_config.write_text('{"webBindPort": 8766}\n', encoding="utf-8")
+
+            with patch("anki_addon_release.publisher.default_anki_python", return_value="/anki/python"), patch(
+                "anki_addon_release.publisher.subprocess.Popen", return_value=MagicMock(pid=42)
+            ) as popen:
+                launch_publisher(paths, anki_bin="/anki/anki", check_database=True)
+
+            self.assertEqual(popen.call_args.kwargs["env"]["ANKI_ADDON_RELEASE_PUBLISHER_CHECK_DATABASE"], "1")
+
+    def test_sync_explains_when_anki_requires_a_one_way_sync(self) -> None:
+        with patch(
+            "anki_addon_release.publisher.anki_connect_request",
+            side_effect=ReleaseError("AnkiConnect sync failed: Sync status 2 not one of [0, 1]"),
+        ):
+            with self.assertRaisesRegex(ReleaseError, "one-way sync.*Upload to AnkiWeb"):
+                start_sync("http://127.0.0.1:8766")
 
     def test_status_reports_missing_collection_without_claiming_initialized(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

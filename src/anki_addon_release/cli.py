@@ -465,7 +465,10 @@ def _publisher_launch(args: argparse.Namespace) -> int:
     print(f"pid: {process.pid}")
     print(f"command: {' '.join(command)}")
     if credentials is not None:
-        print("AnkiWeb login started from the process environment; choose Download if Anki asks for initial sync direction")
+        print(
+            "AnkiWeb login started from the process environment; "
+            "choose the direction that preserves the collection you intend to publish"
+        )
     if args.check_database:
         print("Anki Check Database started in the isolated publisher profile")
     if args.clean_media:

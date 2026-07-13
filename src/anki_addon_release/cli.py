@@ -30,6 +30,8 @@ from .publisher import (
     DEFAULT_PUBLISHER_ANKI_CONNECT_URL,
     PublisherPaths,
     backup_publisher_collection,
+    apply_publisher_prune,
+    build_publisher_prune_plan,
     deck_id_for_name,
     default_anki_bin,
     default_anki_connect_source,
@@ -205,6 +207,21 @@ def _parser() -> argparse.ArgumentParser:
     publisher_verify = publisher_subparsers.add_parser("verify", help="list decks visible in the open publisher profile")
     publisher_verify.add_argument("--anki-connect-url", default=DEFAULT_PUBLISHER_ANKI_CONNECT_URL)
     publisher_verify.set_defaults(func=_publisher_verify)
+
+    publisher_prune = publisher_subparsers.add_parser(
+        "prune",
+        help="plan or apply a leaf-first trim of the isolated publisher collection",
+    )
+    publisher_prune.add_argument("--anki-connect-url", default=DEFAULT_PUBLISHER_ANKI_CONNECT_URL)
+    publisher_prune.add_argument("--keep-deck-id", action="append", default=[], help="publisher deck id to retain with all children")
+    publisher_prune.add_argument(
+        "--keep-deck-id-env",
+        action="append",
+        default=[],
+        help="environment variable containing comma-separated publisher deck ids to retain",
+    )
+    publisher_prune.add_argument("--apply", action="store_true", help="create a backup and delete the planned decks")
+    publisher_prune.set_defaults(func=_publisher_prune)
 
     return parser
 
@@ -484,6 +501,37 @@ def _publisher_sync(args: argparse.Namespace) -> int:
 
 def _publisher_verify(args: argparse.Namespace) -> int:
     print(json.dumps(publisher_decks(args.anki_connect_url), indent=2, sort_keys=True))
+    return 0
+
+
+def _publisher_prune(args: argparse.Namespace) -> int:
+    keep_deck_ids = list(args.keep_deck_id)
+    for variable in args.keep_deck_id_env:
+        value = os.environ.get(variable)
+        if value is None:
+            raise ReleaseError(f"publisher prune could not find {variable}")
+        keep_deck_ids.extend(item.strip() for item in value.split(","))
+
+    plan = build_publisher_prune_plan(publisher_decks(args.anki_connect_url), keep_deck_ids=keep_deck_ids)
+    print(
+        json.dumps(
+            {
+                "keep_roots": plan.keep_roots,
+                "retained_decks": plan.retained_decks,
+                "delete_stages": plan.delete_stages,
+                "delete_count": len(plan.delete_decks),
+                "missing_keep_deck_ids": plan.missing_keep_deck_ids,
+            },
+            indent=2,
+        )
+    )
+    if not args.apply:
+        return 0
+
+    backup = backup_publisher_collection(_publisher_paths(args))
+    deleted = apply_publisher_prune(args.anki_connect_url, plan)
+    print(f"backup: {backup}")
+    print(f"deleted_decks: {deleted}")
     return 0
 
 

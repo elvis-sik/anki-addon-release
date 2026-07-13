@@ -4,13 +4,15 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 import zipfile
 
 from anki_addon_release.errors import ReleaseError
 from anki_addon_release.publisher import (
     PublisherPaths,
+    apply_publisher_prune,
     backup_publisher_collection,
+    build_publisher_prune_plan,
     configure_anki_connect,
     initialize_publisher,
     launch_publisher,
@@ -21,6 +23,46 @@ from anki_addon_release.publisher import (
 
 
 class PublisherTests(unittest.TestCase):
+    def test_prune_plan_retains_requested_roots_and_their_children(self) -> None:
+        decks = {
+            "Default": "1",
+            "Private": "10",
+            "Private::Child": "11",
+            "Public": "20",
+            "Public::Child": "21",
+            "Public::Child::Grandchild": "22",
+        }
+
+        plan = build_publisher_prune_plan(decks, keep_deck_ids=["20"])
+
+        self.assertEqual(plan.keep_roots, ("Public",))
+        self.assertEqual(plan.retained_decks, ("Default", "Public", "Public::Child", "Public::Child::Grandchild"))
+        self.assertEqual(plan.delete_stages, (("Private::Child",), ("Private",)))
+
+    def test_prune_plan_reports_unknown_keep_ids_without_deleting(self) -> None:
+        plan = build_publisher_prune_plan({"Default": "1", "Public": "2"}, keep_deck_ids=["999"])
+
+        self.assertEqual(plan.missing_keep_deck_ids, ("999",))
+        self.assertEqual(plan.delete_decks, ("Public",))
+
+    def test_apply_prune_uses_leaf_first_anki_deck_deletion(self) -> None:
+        plan = build_publisher_prune_plan(
+            {"Default": "1", "Private": "10", "Private::Child": "11", "Public": "20"},
+            keep_deck_ids=["20"],
+        )
+
+        with patch("anki_addon_release.publisher.anki_connect_request") as request:
+            deleted = apply_publisher_prune("http://127.0.0.1:8766", plan)
+
+        self.assertEqual(deleted, 2)
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call("http://127.0.0.1:8766", "deleteDecks", decks=["Private::Child"], cardsToo=True),
+                call("http://127.0.0.1:8766", "deleteDecks", decks=["Private"], cardsToo=True),
+            ],
+        )
+
     def test_backup_contains_consistent_database_media_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

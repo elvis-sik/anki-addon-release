@@ -228,7 +228,29 @@ anki-addon-release publisher sync
 `publisher sync` starts Anki's own sync through AnkiConnect. Wait for Anki to
 report its result before continuing. `publisher verify` lists the deck names and
 ids visible to the open publisher profile on `8766`, and `publisher deck-id` returns one
-id. Once the ID is registered in the project's private `.env`, ordinary
+id.
+
+When the isolated collection has been validated, `publisher prune` can trim it
+without touching the daily profile. It keeps explicitly selected publisher deck
+IDs and all their children, plans all other deletion work leaf-first, and leaves
+Anki's `Default` deck in place. The command is dry-run by default; `--apply`
+creates a fresh portable backup before using Anki's own deck-removal API:
+
+```bash
+anki-addon-release publisher prune \
+  --keep-deck-id 1234567890 \
+  --keep-deck-id-env ANKIWEB_PUBLISHER_KEEP_DECK_IDS
+
+anki-addon-release publisher prune \
+  --keep-deck-id-env ANKIWEB_PUBLISHER_KEEP_DECK_IDS \
+  --apply
+```
+
+Store comma-separated IDs in a private environment file, for example
+`ANKIWEB_PUBLISHER_KEEP_DECK_IDS=1234567890,1234567891`; never put private
+collection paths in the public repository.
+
+Once the ID is registered in the project's private `.env`, ordinary
 `publish` continues to use the existing review-first AnkiWeb form automation.
 
 For listings that are already shared, retain their existing publisher-side deck

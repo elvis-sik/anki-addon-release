@@ -59,6 +59,18 @@ class PublisherPaths:
         return self.anki_connect_dir / "config.json"
 
 
+@dataclass(frozen=True)
+class PublisherPrunePlan:
+    keep_roots: tuple[str, ...]
+    retained_decks: tuple[str, ...]
+    delete_stages: tuple[tuple[str, ...], ...]
+    missing_keep_deck_ids: tuple[str, ...]
+
+    @property
+    def delete_decks(self) -> tuple[str, ...]:
+        return tuple(deck for stage in self.delete_stages for deck in stage)
+
+
 def default_publisher_base() -> Path:
     configured = os.environ.get("ANKI_PUBLISHER_BASE")
     if configured:
@@ -248,6 +260,56 @@ def deck_id_for_name(url: str, deck_name: str) -> str:
     if deck_id is None:
         raise ReleaseError(f"deck not found in publisher collection: {deck_name}")
     return deck_id
+
+
+def build_publisher_prune_plan(decks: dict[str, str], *, keep_deck_ids: list[str]) -> PublisherPrunePlan:
+    requested_ids = tuple(dict.fromkeys(deck_id.strip() for deck_id in keep_deck_ids if deck_id.strip()))
+    if not requested_ids:
+        raise ReleaseError("publisher prune requires at least one --keep-deck-id or --keep-deck-id-env value")
+    if any(not deck_id.isdigit() for deck_id in requested_ids):
+        raise ReleaseError("publisher prune keep deck ids must be numeric")
+
+    id_to_name = {deck_id: name for name, deck_id in decks.items()}
+    missing = tuple(sorted(deck_id for deck_id in requested_ids if deck_id not in id_to_name))
+    keep_roots = tuple(sorted(id_to_name[deck_id] for deck_id in requested_ids if deck_id in id_to_name))
+    protected = {
+        name
+        for name in decks
+        if any(name == root or name.startswith(f"{root}::") for root in keep_roots)
+    }
+    remaining = dict(decks)
+    stages: list[tuple[str, ...]] = []
+    while True:
+        leaves = tuple(
+            sorted(
+                name
+                for name in remaining
+                if name != "Default"
+                and name not in protected
+                and not any(other.startswith(f"{name}::") for other in remaining)
+            )
+        )
+        if not leaves:
+            break
+        stages.append(leaves)
+        for name in leaves:
+            del remaining[name]
+
+    return PublisherPrunePlan(
+        keep_roots=keep_roots,
+        retained_decks=tuple(sorted(remaining)),
+        delete_stages=tuple(stages),
+        missing_keep_deck_ids=missing,
+    )
+
+
+def apply_publisher_prune(url: str, plan: PublisherPrunePlan) -> int:
+    if plan.missing_keep_deck_ids:
+        missing = ", ".join(plan.missing_keep_deck_ids)
+        raise ReleaseError(f"publisher prune keep deck ids were not found: {missing}")
+    for stage in plan.delete_stages:
+        anki_connect_request(url, "deleteDecks", decks=list(stage), cardsToo=True)
+    return len(plan.delete_decks)
 
 
 def export_deck(url: str, *, deck_name: str, output: Path, include_scheduling: bool = False) -> Path:

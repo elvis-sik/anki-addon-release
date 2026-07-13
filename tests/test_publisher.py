@@ -35,6 +35,7 @@ class PublisherTests(unittest.TestCase):
 
             with zipfile.ZipFile(backup) as archive:
                 self.assertEqual(set(archive.namelist()), {"collection.anki2", "collection.media/map.png", "publisher-backup.json"})
+                self.assertEqual(archive.getinfo("collection.anki2").compress_type, zipfile.ZIP_STORED)
                 manifest = archive.read("publisher-backup.json").decode("utf-8")
                 self.assertIn('"media_file_count": 1', manifest)
 

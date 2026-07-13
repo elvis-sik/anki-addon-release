@@ -193,7 +193,8 @@ Anki is idle, not while it is syncing or changing media.
 anki-addon-release publisher backup
 ```
 
-The archive contains `collection.anki2`, all collection media, and a small
+The archive is deliberately uncompressed so large collections finish backing
+up promptly. It contains `collection.anki2`, all collection media, and a small
 manifest. It does not contain credentials.
 
 The repeatable deck-transfer lane is:

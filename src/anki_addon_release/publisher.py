@@ -159,7 +159,9 @@ def backup_publisher_collection(paths: PublisherPaths, *, output: Path | None = 
             "collection": "collection.anki2",
             "media_file_count": len(media_files),
         }
-        with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        # Backups are a safety checkpoint before moving or deleting decks.  Store
+        # them directly so large media collections finish promptly and reliably.
+        with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_STORED) as archive:
             archive.write(snapshot, "collection.anki2")
             for file in media_files:
                 archive.write(file, file.relative_to(paths.profile_dir).as_posix())

@@ -178,6 +178,11 @@ def _parser() -> argparse.ArgumentParser:
     publisher_launch.add_argument("--login-email-env", help="environment variable with the AnkiWeb email for one-shot login")
     publisher_launch.add_argument("--login-password-env", help="environment variable with the AnkiWeb password for one-shot login")
     publisher_launch.add_argument("--check-database", action="store_true", help="run Anki's Check Database in the isolated profile after launch")
+    publisher_launch.add_argument(
+        "--clean-media",
+        action="store_true",
+        help="run Check Media in the isolated profile, permanently deleting unused Publisher media",
+    )
     publisher_launch.set_defaults(func=_publisher_launch)
 
     publisher_deck_id = publisher_subparsers.add_parser("deck-id", help="print one publisher deck's id")
@@ -454,6 +459,7 @@ def _publisher_launch(args: argparse.Namespace) -> int:
         login_credentials=credentials,
         login_credential_env_names=(args.login_email_env, args.login_password_env) if credentials is not None else None,
         check_database=args.check_database,
+        clean_media=args.clean_media,
         anki_connect_port=args.anki_connect_port,
     )
     print(f"pid: {process.pid}")
@@ -462,6 +468,8 @@ def _publisher_launch(args: argparse.Namespace) -> int:
         print("AnkiWeb login started from the process environment; choose Download if Anki asks for initial sync direction")
     if args.check_database:
         print("Anki Check Database started in the isolated publisher profile")
+    if args.clean_media:
+        print("Anki Check Media cleanup started in the isolated publisher profile")
     return 0
 
 

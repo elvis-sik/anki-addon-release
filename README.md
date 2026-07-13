@@ -204,6 +204,14 @@ window and relaunch only that isolated profile with:
 anki-addon-release publisher launch --check-database
 ```
 
+After pruning, reclaim removed decks' orphaned media with Anki's own Check
+Media workflow. This permanently deletes only Publisher files no remaining
+card references, so run it only after a completed Publisher backup:
+
+```bash
+anki-addon-release publisher launch --check-database --clean-media
+```
+
 After Anki finishes opening, retry `publisher sync`.
 If Anki then requires a one-way sync, choose **Upload to AnkiWeb** only when the
 isolated Publisher collection is the intended source of truth.

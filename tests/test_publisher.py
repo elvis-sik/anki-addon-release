@@ -172,6 +172,21 @@ class PublisherTests(unittest.TestCase):
 
             self.assertEqual(popen.call_args.kwargs["env"]["ANKI_ADDON_RELEASE_PUBLISHER_CHECK_DATABASE"], "1")
 
+    def test_launch_can_request_unused_media_cleanup_in_publisher_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = PublisherPaths(base=Path(temporary) / "publisher", profile="Publisher")
+            paths.base.mkdir()
+            (paths.base / "prefs21.db").write_bytes(b"prefs")
+            paths.anki_connect_dir.mkdir(parents=True)
+            paths.anki_connect_config.write_text('{"webBindPort": 8766}\n', encoding="utf-8")
+
+            with patch("anki_addon_release.publisher.default_anki_python", return_value="/anki/python"), patch(
+                "anki_addon_release.publisher.subprocess.Popen", return_value=MagicMock(pid=42)
+            ) as popen:
+                launch_publisher(paths, anki_bin="/anki/anki", clean_media=True)
+
+            self.assertEqual(popen.call_args.kwargs["env"]["ANKI_ADDON_RELEASE_PUBLISHER_CLEAN_MEDIA"], "1")
+
     def test_launch_scrubs_original_login_environment_variables_from_anki(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             paths = PublisherPaths(base=Path(temporary) / "publisher", profile="Publisher")

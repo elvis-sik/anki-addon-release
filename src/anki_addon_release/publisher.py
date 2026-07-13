@@ -188,6 +188,7 @@ def launch_publisher(
     login_credentials: tuple[str, str] | None = None,
     login_credential_env_names: tuple[str, str] | None = None,
     check_database: bool = False,
+    clean_media: bool = False,
     anki_connect_port: int = DEFAULT_PUBLISHER_ANKI_CONNECT_PORT,
 ) -> tuple[subprocess.Popen[str], list[str]]:
     if not publisher_status(paths)["initialized"]:
@@ -211,10 +212,12 @@ def launch_publisher(
     env["ANKI_SINGLE_INSTANCE_KEY"] = f"anki-addon-release-publisher-{uuid.uuid4().hex}"
     for name in login_credential_env_names or ():
         env.pop(name, None)
-    if login_credentials is not None or check_database:
+    if login_credentials is not None or check_database or clean_media:
         _ensure_login_addon(paths)
     if check_database:
         env["ANKI_ADDON_RELEASE_PUBLISHER_CHECK_DATABASE"] = "1"
+    if clean_media:
+        env["ANKI_ADDON_RELEASE_PUBLISHER_CLEAN_MEDIA"] = "1"
     if login_credentials is not None:
         env["ANKI_ADDON_RELEASE_PUBLISHER_LOGIN"] = "1"
         env["ANKI_ADDON_RELEASE_PUBLISHER_EMAIL"] = login_credentials[0]

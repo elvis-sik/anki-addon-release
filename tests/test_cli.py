@@ -1,15 +1,26 @@
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from anki_addon_release.cli import main
 
 
 class CliTests(unittest.TestCase):
+    def test_publisher_prune_apply_requires_a_completed_backup(self) -> None:
+        with patch("anki_addon_release.cli.publisher_decks", return_value={"Default": "1", "Public": "2"}):
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(["publisher", "prune", "--keep-deck-id", "2", "--apply"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("requires --backup", stderr.getvalue())
+
     def test_check_warns_when_github_url_is_not_visible_in_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _addon_project(Path(tmp))

@@ -220,7 +220,12 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         help="environment variable containing comma-separated publisher deck ids to retain",
     )
-    publisher_prune.add_argument("--apply", action="store_true", help="create a backup and delete the planned decks")
+    publisher_prune.add_argument("--apply", action="store_true", help="delete the planned decks after an explicit backup check")
+    publisher_prune.add_argument(
+        "--backup",
+        type=Path,
+        help="completed Publisher backup archive made while the Publisher profile was closed; required with --apply",
+    )
     publisher_prune.set_defaults(func=_publisher_prune)
 
     return parser
@@ -528,7 +533,11 @@ def _publisher_prune(args: argparse.Namespace) -> int:
     if not args.apply:
         return 0
 
-    backup = backup_publisher_collection(_publisher_paths(args))
+    if args.backup is None:
+        raise ReleaseError("publisher prune --apply requires --backup from a completed publisher backup")
+    backup = args.backup.expanduser().resolve()
+    if not backup.is_file():
+        raise ReleaseError(f"publisher prune backup archive not found: {backup}")
     deleted = apply_publisher_prune(args.anki_connect_url, plan)
     print(f"backup: {backup}")
     print(f"deleted_decks: {deleted}")

@@ -234,7 +234,8 @@ When the isolated collection has been validated, `publisher prune` can trim it
 without touching the daily profile. It keeps explicitly selected publisher deck
 IDs and all their children, plans all other deletion work leaf-first, and leaves
 Anki's `Default` deck in place. The command is dry-run by default; `--apply`
-creates a fresh portable backup before using Anki's own deck-removal API:
+requires a completed portable backup made while Publisher is closed, before it
+uses Anki's own deck-removal API:
 
 ```bash
 anki-addon-release publisher prune \
@@ -243,12 +244,15 @@ anki-addon-release publisher prune \
 
 anki-addon-release publisher prune \
   --keep-deck-id-env ANKIWEB_PUBLISHER_KEEP_DECK_IDS \
-  --apply
+  --apply \
+  --backup "$HOME/Library/Application Support/anki-addon-release/publisher/backups/Publisher-YYYYMMDDTHHMMSSZ.zip"
 ```
 
 Store comma-separated IDs in a private environment file, for example
 `ANKIWEB_PUBLISHER_KEEP_DECK_IDS=1234567890,1234567891`; never put private
-collection paths in the public repository.
+collection paths in the public repository. Run `publisher backup` before
+launching Publisher for the apply step; its SQLite snapshot is intentionally
+not made while the open app holds the collection.
 
 Once the ID is registered in the project's private `.env`, ordinary
 `publish` continues to use the existing review-first AnkiWeb form automation.

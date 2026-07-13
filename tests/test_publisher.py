@@ -130,6 +130,30 @@ class PublisherTests(unittest.TestCase):
 
             self.assertEqual(popen.call_args.kwargs["env"]["ANKI_ADDON_RELEASE_PUBLISHER_CHECK_DATABASE"], "1")
 
+    def test_launch_scrubs_original_login_environment_variables_from_anki(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = PublisherPaths(base=Path(temporary) / "publisher", profile="Publisher")
+            paths.base.mkdir()
+            (paths.base / "prefs21.db").write_bytes(b"prefs")
+            paths.anki_connect_dir.mkdir(parents=True)
+            paths.anki_connect_config.write_text('{"webBindPort": 8766}\n', encoding="utf-8")
+
+            with patch.dict("anki_addon_release.publisher.os.environ", {"ANKIWEB_EMAIL": "email", "ANKIWEB_PASSWORD": "password"}, clear=True), patch(
+                "anki_addon_release.publisher.default_anki_python", return_value="/anki/python"
+            ), patch("anki_addon_release.publisher.subprocess.Popen", return_value=MagicMock(pid=42)) as popen:
+                launch_publisher(
+                    paths,
+                    anki_bin="/anki/anki",
+                    login_credentials=("email", "password"),
+                    login_credential_env_names=("ANKIWEB_EMAIL", "ANKIWEB_PASSWORD"),
+                )
+
+            env = popen.call_args.kwargs["env"]
+            self.assertNotIn("ANKIWEB_EMAIL", env)
+            self.assertNotIn("ANKIWEB_PASSWORD", env)
+            self.assertEqual(env["ANKI_ADDON_RELEASE_PUBLISHER_EMAIL"], "email")
+            self.assertEqual(env["ANKI_ADDON_RELEASE_PUBLISHER_PASSWORD"], "password")
+
     def test_sync_explains_when_anki_requires_a_one_way_sync(self) -> None:
         with patch(
             "anki_addon_release.publisher.anki_connect_request",

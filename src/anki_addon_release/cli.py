@@ -430,6 +430,7 @@ def _publisher_launch(args: argparse.Namespace) -> int:
         _publisher_paths(args),
         anki_bin=args.anki_bin or default_anki_bin(),
         login_credentials=credentials,
+        login_credential_env_names=(args.login_email_env, args.login_password_env) if credentials is not None else None,
         check_database=args.check_database,
         anki_connect_port=args.anki_connect_port,
     )

@@ -162,7 +162,7 @@ class AnkiWebBrowser:
 
                 if plan.submit:
                     _click_deck_submit(page)
-                    page.wait_for_load_state("networkidle")
+                    _wait_for_deck_submission(page, plan)
                     status = "submitted"
                 else:
                     status = "prepared"
@@ -396,6 +396,31 @@ def _wait_for_addon_submission(page: object) -> None:
             body = ""
         detail = f": {body[:500]}" if body else ""
         raise PublishError(f"AnkiWeb did not confirm the add-on submission{detail}") from exc
+
+
+def _wait_for_deck_submission(page: object, plan: DeckPublishPlan) -> None:
+    try:
+        page.wait_for_function(
+            """
+            (shareUrl) => {
+                const form = document.querySelector('form');
+                const field = form?.querySelector('textarea');
+                return !field || location.href !== shareUrl;
+            }
+            """,
+            arg=plan.share_url,
+        )
+        _wait_for_frontend(page)
+    except Exception as exc:
+        try:
+            body = page.locator("body").inner_text(timeout=1_000).strip()
+        except Exception:
+            body = ""
+        detail = f": {body[:500]}" if body else ""
+        raise PublishError(
+            "AnkiWeb did not confirm the deck submission; the share form remained open after submit"
+            f"{detail}"
+        ) from exc
 
 
 def _pause_for_review() -> None:

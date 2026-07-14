@@ -209,11 +209,41 @@ class BrowserFlowTests(unittest.TestCase):
             self.assertIn(b"Deck+description", server.last_post_body)
             self.assertIn(b"confirmCopyright=on", server.last_post_body)
 
+    def test_deck_share_requires_an_ankiweb_confirmation_page(self) -> None:
+        with FakeAnkiWebServer(keep_deck_share_form_after_post=True) as server, tempfile.TemporaryDirectory() as tmp:
+            plan = DeckPublishPlan(
+                base_url=server.url,
+                share_url=f"{server.url}/decks/share/1650000000000",
+                login_url=f"{server.url}/account/login",
+                source_deck_id="1650000000000",
+                shared_id="987654321",
+                title="Geography Deck",
+                tags="geography maps",
+                support_url=None,
+                description="Deck description",
+                submit=True,
+                copyright_confirmed=True,
+            )
+
+            with self.assertRaisesRegex(PublishError, "did not confirm the deck submission"):
+                AnkiWebBrowser(
+                    profile_dir=Path(tmp) / "profile",
+                    headless=True,
+                    timeout_ms=250,
+                ).publish_deck(plan)
+
 
 class FakeAnkiWebServer:
-    def __init__(self, *, login_is_logged_in: bool = False, keep_upload_form_after_post: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        login_is_logged_in: bool = False,
+        keep_upload_form_after_post: bool = False,
+        keep_deck_share_form_after_post: bool = False,
+    ) -> None:
         self.login_is_logged_in = login_is_logged_in
         self.keep_upload_form_after_post = keep_upload_form_after_post
+        self.keep_deck_share_form_after_post = keep_deck_share_form_after_post
 
     def __enter__(self) -> FakeAnkiWebServer:
         self.last_post_path = ""
@@ -258,7 +288,10 @@ class FakeAnkiWebServer:
                 owner.post_paths.append(handler.path)
                 owner.last_post_body = handler.rfile.read(length)
                 owner.post_bodies.append(owner.last_post_body)
-                body = _create_form() if owner.keep_upload_form_after_post else _logged_in_page()
+                if owner.keep_deck_share_form_after_post and handler.path == "/decks/share/1650000000000":
+                    body = _deck_share_form()
+                else:
+                    body = _create_form() if owner.keep_upload_form_after_post else _logged_in_page()
                 handler.send_response(200)
                 handler.send_header("Content-Type", "text/html; charset=utf-8")
                 handler.send_header("Content-Length", str(len(body)))

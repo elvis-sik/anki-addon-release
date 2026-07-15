@@ -10,6 +10,9 @@ from .credentials import LoginCredentials
 from .publish import DeckPublishPlan, PublishPlan
 
 
+_DECK_SHARE_COMPLETION_TIMEOUT_MS = 90_000
+
+
 @dataclass(frozen=True)
 class BrowserPublishResult:
     status: str
@@ -163,7 +166,10 @@ class AnkiWebBrowser:
                 if plan.submit:
                     _click_deck_submit(page)
                     _wait_for_deck_submission(page, plan)
-                    _wait_for_deck_share_completion(page)
+                    _wait_for_deck_share_completion(
+                        page,
+                        timeout_ms=max(self.timeout_ms, _DECK_SHARE_COMPLETION_TIMEOUT_MS),
+                    )
                     status = "submitted"
                 else:
                     status = "prepared"
@@ -424,7 +430,7 @@ def _wait_for_deck_submission(page: object, plan: DeckPublishPlan) -> None:
         ) from exc
 
 
-def _wait_for_deck_share_completion(page: object) -> None:
+def _wait_for_deck_share_completion(page: object, *, timeout_ms: int) -> None:
     """Wait for AnkiWeb's asynchronous deck-share worker when it is present."""
     if "/decks/share/pending" not in page.url:
         return
@@ -433,7 +439,8 @@ def _wait_for_deck_share_completion(page: object) -> None:
         page.wait_for_function(
             """
             () => document.body?.innerText.includes('Completed successfully')
-            """
+            """,
+            timeout=timeout_ms,
         )
         _wait_for_frontend(page)
     except Exception as exc:

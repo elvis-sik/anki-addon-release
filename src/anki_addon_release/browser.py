@@ -163,6 +163,7 @@ class AnkiWebBrowser:
                 if plan.submit:
                     _click_deck_submit(page)
                     _wait_for_deck_submission(page, plan)
+                    _wait_for_deck_share_completion(page)
                     status = "submitted"
                 else:
                     status = "prepared"
@@ -421,6 +422,27 @@ def _wait_for_deck_submission(page: object, plan: DeckPublishPlan) -> None:
             "AnkiWeb did not confirm the deck submission; the share form remained open after submit"
             f"{detail}"
         ) from exc
+
+
+def _wait_for_deck_share_completion(page: object) -> None:
+    """Wait for AnkiWeb's asynchronous deck-share worker when it is present."""
+    if "/decks/share/pending" not in page.url:
+        return
+
+    try:
+        page.wait_for_function(
+            """
+            () => document.body?.innerText.includes('Completed successfully')
+            """
+        )
+        _wait_for_frontend(page)
+    except Exception as exc:
+        try:
+            body = page.locator("body").inner_text(timeout=1_000).strip()
+        except Exception:
+            body = ""
+        detail = f": {body[:500]}" if body else ""
+        raise PublishError(f"AnkiWeb did not complete the deck share{detail}") from exc
 
 
 def _pause_for_review() -> None:

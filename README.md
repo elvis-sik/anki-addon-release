@@ -28,7 +28,10 @@ including AnkiWeb login, create/update form filling, support URL filling,
 branch compatibility fields, and local browser-flow regression tests.
 Deck publishing supports public/private config splitting: public repos can hold
 the listing file, while `.anki-addon-release.local.toml` or `.env` holds the
-private Anki collection deck reference.
+private Anki collection deck reference. A submitted deck release waits for
+AnkiWeb's worker, reloads the cache-busted public listing, and verifies the
+title, submitted description text, and expected screenshot image URLs before
+reporting success.
 It is published on PyPI via Trusted Publishing.
 
 ## Install
@@ -347,7 +350,7 @@ Public `pyproject.toml`:
 target = "deck"
 
 [tool.anki-addon-release.ankiweb]
-# Optional. Record the public shared item id once known.
+# Required for --submit so the public listing can be verified after sharing.
 shared_id = "1234567890"
 listing_file = "release/ankiweb.md"
 login_email_env = "ANKIWEB_EMAIL"
@@ -390,6 +393,11 @@ copyright_confirmed = true
 Deck-name resolution uses AnkiConnect's `deckNamesAndIds`, so Anki must be open
 with AnkiConnect running. Numeric `source_deck_id` is the most deterministic
 release input.
+
+For an initial listing, make the one-time AnkiWeb share manually, record the
+assigned `shared_id`, then use `anki-addon-release publish --submit` for every
+auditable update. The tool refuses an automated submit without that id rather
+than declaring the worker message a release success it cannot verify.
 
 ## Commands
 

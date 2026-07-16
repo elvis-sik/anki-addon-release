@@ -304,11 +304,31 @@ class PublishPlanTests(unittest.TestCase):
                 project_root=root,
                 artifact_dir=root / "dist",
                 target="deck",
-                ankiweb=AnkiWebConfig(title="Geography Deck", description_file=description),
+                ankiweb=AnkiWebConfig(
+                    shared_id="987654321",
+                    title="Geography Deck",
+                    description_file=description,
+                ),
                 deck=DeckConfig(source_deck_id="1650000000000"),
             )
 
             with self.assertRaisesRegex(PublishError, "copyright"):
+                build_deck_publish_plan(config, submit=True)
+
+    def test_deck_publish_submit_requires_shared_id_for_public_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            description = root / "README.md"
+            description.write_text("# Deck\n", encoding="utf-8")
+            config = ReleaseConfig(
+                project_root=root,
+                artifact_dir=root / "dist",
+                target="deck",
+                ankiweb=AnkiWebConfig(title="Geography Deck", description_file=description),
+                deck=DeckConfig(source_deck_id="1650000000000", copyright_confirmed=True),
+            )
+
+            with self.assertRaisesRegex(PublishError, "shared_id"):
                 build_deck_publish_plan(config, submit=True)
 
     def test_deck_publish_can_resolve_source_name_through_anki_connect(self) -> None:
@@ -320,7 +340,11 @@ class PublishPlanTests(unittest.TestCase):
                 project_root=root,
                 artifact_dir=root / "dist",
                 target="deck",
-                ankiweb=AnkiWebConfig(title="Geography Deck", description_file=description),
+                ankiweb=AnkiWebConfig(
+                    shared_id="987654321",
+                    title="Geography Deck",
+                    description_file=description,
+                ),
                 deck=DeckConfig(
                     source_deck_name="Private::Geography",
                     anki_connect_url="http://127.0.0.1:8765",

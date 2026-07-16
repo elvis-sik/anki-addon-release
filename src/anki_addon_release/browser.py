@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import unescape
 from pathlib import Path
 import re
+from time import monotonic, time
 from urllib.parse import urljoin
 
 from .errors import PublishError
@@ -11,6 +13,8 @@ from .publish import DeckPublishPlan, PublishPlan
 
 
 _DECK_SHARE_COMPLETION_TIMEOUT_MS = 90_000
+_DECK_PUBLIC_LISTING_TIMEOUT_MS = 90_000
+_DECK_PUBLIC_LISTING_POLL_MS = 1_000
 
 
 @dataclass(frozen=True)
@@ -144,6 +148,10 @@ class AnkiWebBrowser:
             raise PublishError("headless deck publishing requires --submit")
         if plan.submit and not plan.copyright_confirmed:
             raise PublishError("deck publishing with --submit requires copyright confirmation")
+        if plan.submit and not plan.shared_id:
+            raise PublishError(
+                "deck publishing with --submit requires ankiweb.shared_id so the public listing can be verified"
+            )
 
         sync_playwright = _sync_playwright()
         with sync_playwright() as playwright:
@@ -170,12 +178,17 @@ class AnkiWebBrowser:
                         page,
                         timeout_ms=max(self.timeout_ms, _DECK_SHARE_COMPLETION_TIMEOUT_MS),
                     )
+                    final_url = _verify_deck_public_listing(
+                        page,
+                        plan,
+                        timeout_ms=max(self.timeout_ms, _DECK_PUBLIC_LISTING_TIMEOUT_MS),
+                    )
                     status = "submitted"
                 else:
                     status = "prepared"
+                    final_url = page.url
 
                 screenshot = self._screenshot(page, f"deck-publish-{status}")
-                final_url = page.url
                 if not plan.submit and not self.headless:
                     _pause_for_review()
             except Exception as exc:
@@ -452,6 +465,119 @@ def _wait_for_deck_share_completion(page: object, *, timeout_ms: int) -> None:
         raise PublishError(f"AnkiWeb did not complete the deck share{detail}") from exc
 
 
+def _verify_deck_public_listing(page: object, plan: DeckPublishPlan, *, timeout_ms: int) -> str:
+    """Require the public item page to reflect the submitted deck metadata."""
+    if not plan.shared_id:
+        raise PublishError("cannot verify a deck listing without ankiweb.shared_id")
+
+    deadline = monotonic() + timeout_ms / 1_000
+    listing_url = urljoin(plan.base_url.rstrip("/") + "/", f"shared/info/{plan.shared_id}")
+    last_mismatches = ["the public listing did not load"]
+
+    while monotonic() < deadline:
+        cache_busted_url = f"{listing_url}?cb={int(time() * 1_000)}"
+        try:
+            page.goto(cache_busted_url, wait_until="domcontentloaded")
+            remaining_ms = max(1, int((deadline - monotonic()) * 1_000))
+            page.wait_for_function(
+                "() => document.querySelector('h1')?.innerText?.trim()",
+                timeout=min(5_000, remaining_ms),
+            )
+            title, description, image_sources = _public_listing_snapshot(page)
+            mismatches = _public_listing_mismatches(
+                plan,
+                title=title,
+                description=description,
+                image_sources=image_sources,
+            )
+            if not mismatches:
+                return cache_busted_url
+            last_mismatches = mismatches
+        except Exception as exc:
+            last_mismatches = [f"the public listing did not load ({type(exc).__name__})"]
+
+        remaining_ms = int((deadline - monotonic()) * 1_000)
+        if remaining_ms <= 0:
+            break
+        page.wait_for_timeout(min(_DECK_PUBLIC_LISTING_POLL_MS, remaining_ms))
+
+    detail = "; ".join(last_mismatches)
+    raise PublishError(
+        "AnkiWeb share worker completed, but the public listing did not match the submitted metadata "
+        f"within {timeout_ms / 1_000:g} seconds: {detail}"
+    )
+
+
+def _public_listing_snapshot(page: object) -> tuple[str, str, tuple[str, ...]]:
+    title = page.locator("h1").first.inner_text(timeout=1_000).strip()
+    description = page.locator("body").inner_text(timeout=1_000)
+    try:
+        raw_sources = page.locator("img").evaluate_all(
+            "(images) => images.map((image) => image.getAttribute('src') || '')"
+        )
+    except Exception:
+        raw_sources = []
+    image_sources = tuple(source.strip() for source in raw_sources if isinstance(source, str) and source.strip())
+    return title, description, image_sources
+
+
+def _public_listing_mismatches(
+    plan: DeckPublishPlan,
+    *,
+    title: str,
+    description: str,
+    image_sources: tuple[str, ...],
+) -> list[str]:
+    mismatches = []
+    if _normalize_listing_text(title) != _normalize_listing_text(plan.title):
+        mismatches.append("title")
+
+    public_description = _normalize_listing_text(description)
+    for index, marker in enumerate(_description_markers(plan.description), start=1):
+        if marker not in public_description:
+            mismatches.append(f"description paragraph {index}")
+
+    for expected_source in _description_image_sources(plan.description):
+        if not any(_same_image_source(expected_source, actual_source) for actual_source in image_sources):
+            mismatches.append(f"screenshot {expected_source}")
+    return mismatches
+
+
+def _description_markers(markdown: str) -> tuple[str, ...]:
+    without_images = _HTML_IMAGE_RE.sub("", _MARKDOWN_IMAGE_RE.sub("", markdown))
+    visible_text = _MARKDOWN_LINK_RE.sub(r"\1", without_images)
+    visible_text = re.sub(r"</?[^>]+>", "", visible_text)
+    visible_text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", visible_text)
+    visible_text = re.sub(r"(?m)^\s*(?:[-+*]|\d+[.)])\s+", "", visible_text)
+    visible_text = re.sub(r"`([^`]*)`", r"\1", visible_text)
+    visible_text = visible_text.replace("**", "").replace("__", "").replace("~~", "")
+    return tuple(
+        marker
+        for block in re.split(r"\n\s*\n", visible_text)
+        if (marker := _normalize_listing_text(block))
+    )
+
+
+def _description_image_sources(markdown: str) -> tuple[str, ...]:
+    sources = [match.group("url") for match in _MARKDOWN_IMAGE_RE.finditer(markdown)]
+    sources.extend(match.group("url") for match in _HTML_IMAGE_RE.finditer(markdown))
+    return tuple(_normalize_image_source(source) for source in sources)
+
+
+def _normalize_listing_text(value: str) -> str:
+    return re.sub(r"\s+", " ", unescape(value)).strip()
+
+
+def _normalize_image_source(value: str) -> str:
+    return unescape(value).strip().strip("<>")
+
+
+def _same_image_source(expected: str, actual: str) -> bool:
+    expected_source = _normalize_image_source(expected)
+    actual_source = _normalize_image_source(actual)
+    return expected_source == actual_source or expected_source.split("?", 1)[0] == actual_source.split("?", 1)[0]
+
+
 def _pause_for_review() -> None:
     try:
         input("Review AnkiWeb form in the browser, then press Enter here to close: ")
@@ -618,4 +744,16 @@ _PASSWORD_CANDIDATES = (
     'input[name="password"]',
     'input[autocomplete="current-password"]',
     'input[id*="password" i]',
+)
+
+_MARKDOWN_IMAGE_RE = re.compile(
+    r"!\[[^\]]*\]\(\s*(?P<url><https?://[^>\s]+>|https?://[^\s)]+)(?:\s+\"[^\"]*\")?\s*\)",
+    re.IGNORECASE,
+)
+_HTML_IMAGE_RE = re.compile(
+    r"<img\b[^>]*\bsrc\s*=\s*[\"'](?P<url>[^\"']+)[\"'][^>]*>",
+    re.IGNORECASE,
+)
+_MARKDOWN_LINK_RE = re.compile(
+    r"(?<!!)\[([^\]]+)\]\(\s*(?:<)?[^)\s>]+(?:>)?(?:\s+\"[^\"]*\")?\s*\)",
 )

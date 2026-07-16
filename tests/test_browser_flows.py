@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -7,8 +8,14 @@ import tempfile
 from threading import Thread
 import unittest
 from unittest.mock import patch
+from urllib.parse import urlparse
 
-from anki_addon_release.browser import AnkiWebBrowser, _pause_for_review, playwright_available
+from anki_addon_release.browser import (
+    AnkiWebBrowser,
+    _description_markers,
+    _pause_for_review,
+    playwright_available,
+)
 from anki_addon_release.credentials import LoginCredentials
 from anki_addon_release.errors import PublishError
 from anki_addon_release.publish import DeckPublishPlan, PublishPlan
@@ -22,6 +29,21 @@ class BrowserHelperTests(unittest.TestCase):
         with patch("builtins.input", side_effect=EOFError):
             with self.assertRaisesRegex(PublishError, "interactive terminal"):
                 _pause_for_review()
+
+    def test_description_markers_ignore_image_markdown_and_keep_visible_links(self) -> None:
+        markers = _description_markers(
+            "## Geography\n\n"
+            "GitHub: [https://github.com/example/deck](https://github.com/example/deck)\n\n"
+            "![A rendered card](https://assets.example/card.png)"
+        )
+
+        self.assertEqual(
+            markers,
+            (
+                "Geography",
+                "GitHub: https://github.com/example/deck",
+            ),
+        )
 
 
 @unittest.skipUnless(
@@ -202,12 +224,98 @@ class BrowserFlowTests(unittest.TestCase):
             ).publish_deck(plan)
 
             self.assertEqual(result.status, "submitted")
+            self.assertTrue(result.final_url.startswith(f"{server.url}/shared/info/987654321?cb="))
             self.assertEqual(server.last_post_path, "/decks/share/1650000000000")
             self.assertIn(b"Geography+Deck", server.last_post_body)
             self.assertIn(b"geography+maps", server.last_post_body)
             self.assertIn(b"https%3A%2F%2Fgithub.com%2Fexample%2Fgeography-deck", server.last_post_body)
             self.assertIn(b"Deck+description", server.last_post_body)
             self.assertIn(b"confirmCopyright=on", server.last_post_body)
+
+    def test_deck_share_verifies_rendered_description_and_screenshot(self) -> None:
+        description = (
+            "Map cards for a small geography deck.\n\n"
+            "GitHub: [https://github.com/example/geography-deck](https://github.com/example/geography-deck)\n\n"
+            "![Rendered card](https://assets.example/geography-card.png)"
+        )
+        with FakeAnkiWebServer(
+            public_listing_description=(
+                "Map cards for a small geography deck.\n\n"
+                "GitHub: https://github.com/example/geography-deck"
+            ),
+            public_listing_image_sources=("https://assets.example/geography-card.png",),
+        ) as server, tempfile.TemporaryDirectory() as tmp:
+            plan = DeckPublishPlan(
+                base_url=server.url,
+                share_url=f"{server.url}/decks/share/1650000000000",
+                login_url=f"{server.url}/account/login",
+                source_deck_id="1650000000000",
+                shared_id="987654321",
+                title="Geography Deck",
+                tags="geography maps",
+                support_url="https://github.com/example/geography-deck",
+                description=description,
+                submit=True,
+                copyright_confirmed=True,
+            )
+
+            result = AnkiWebBrowser(
+                profile_dir=Path(tmp) / "profile",
+                headless=True,
+                timeout_ms=10_000,
+            ).publish_deck(plan)
+
+            self.assertEqual(result.status, "submitted")
+            self.assertGreaterEqual(server.public_listing_get_count, 1)
+
+    def test_deck_share_rejects_a_stale_public_listing(self) -> None:
+        with FakeAnkiWebServer(public_listing_description="Previous description") as server, tempfile.TemporaryDirectory() as tmp:
+            plan = DeckPublishPlan(
+                base_url=server.url,
+                share_url=f"{server.url}/decks/share/1650000000000",
+                login_url=f"{server.url}/account/login",
+                source_deck_id="1650000000000",
+                shared_id="987654321",
+                title="Geography Deck",
+                tags=None,
+                support_url=None,
+                description="Fresh description",
+                submit=True,
+                copyright_confirmed=True,
+            )
+
+            with patch("anki_addon_release.browser._DECK_PUBLIC_LISTING_TIMEOUT_MS", 250):
+                with self.assertRaisesRegex(PublishError, "public listing did not match"):
+                    AnkiWebBrowser(
+                        profile_dir=Path(tmp) / "profile",
+                        headless=True,
+                        timeout_ms=250,
+                    ).publish_deck(plan)
+
+    def test_deck_share_rejects_a_public_listing_missing_its_screenshot(self) -> None:
+        description = "Fresh description\n\n![Rendered card](https://assets.example/geography-card.png)"
+        with FakeAnkiWebServer(public_listing_description="Fresh description") as server, tempfile.TemporaryDirectory() as tmp:
+            plan = DeckPublishPlan(
+                base_url=server.url,
+                share_url=f"{server.url}/decks/share/1650000000000",
+                login_url=f"{server.url}/account/login",
+                source_deck_id="1650000000000",
+                shared_id="987654321",
+                title="Geography Deck",
+                tags=None,
+                support_url=None,
+                description=description,
+                submit=True,
+                copyright_confirmed=True,
+            )
+
+            with patch("anki_addon_release.browser._DECK_PUBLIC_LISTING_TIMEOUT_MS", 250):
+                with self.assertRaisesRegex(PublishError, "screenshot https://assets.example/geography-card.png"):
+                    AnkiWebBrowser(
+                        profile_dir=Path(tmp) / "profile",
+                        headless=True,
+                        timeout_ms=250,
+                    ).publish_deck(plan)
 
     def test_deck_share_requires_an_ankiweb_confirmation_page(self) -> None:
         with FakeAnkiWebServer(keep_deck_share_form_after_post=True) as server, tempfile.TemporaryDirectory() as tmp:
@@ -240,10 +348,16 @@ class FakeAnkiWebServer:
         login_is_logged_in: bool = False,
         keep_upload_form_after_post: bool = False,
         keep_deck_share_form_after_post: bool = False,
+        public_listing_title: str = "Geography Deck",
+        public_listing_description: str = "Deck description",
+        public_listing_image_sources: tuple[str, ...] = (),
     ) -> None:
         self.login_is_logged_in = login_is_logged_in
         self.keep_upload_form_after_post = keep_upload_form_after_post
         self.keep_deck_share_form_after_post = keep_deck_share_form_after_post
+        self.public_listing_title = public_listing_title
+        self.public_listing_description = public_listing_description
+        self.public_listing_image_sources = public_listing_image_sources
 
     def __enter__(self) -> FakeAnkiWebServer:
         self.last_post_path = ""
@@ -252,26 +366,35 @@ class FakeAnkiWebServer:
         self.post_bodies = []
         self.login_get_count = 0
         self.logout_get_count = 0
+        self.public_listing_get_count = 0
 
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(handler) -> None:
-                if handler.path == "/shared/addons/create":
+                path = urlparse(handler.path).path
+                if path == "/shared/addons/create":
                     body = _create_form()
-                elif handler.path == "/shared/addons/update":
+                elif path == "/shared/addons/update":
                     body = _update_form()
-                elif handler.path == "/shared/addons/too-new":
+                elif path == "/shared/addons/too-new":
                     body = _account_too_new_page()
-                elif handler.path == "/decks/share/1650000000000":
+                elif path == "/decks/share/1650000000000":
                     body = _deck_share_form()
-                elif handler.path == "/account/login":
+                elif path == "/shared/info/987654321":
+                    owner.public_listing_get_count += 1
+                    body = _public_deck_listing(
+                        owner.public_listing_title,
+                        owner.public_listing_description,
+                        owner.public_listing_image_sources,
+                    )
+                elif path == "/account/login":
                     owner.login_get_count += 1
                     if owner.login_is_logged_in and owner.login_get_count == 1:
                         body = _logged_in_page()
                     else:
                         body = _login_form()
-                elif handler.path == "/account/logout":
+                elif path == "/account/logout":
                     owner.logout_get_count += 1
                     body = b"<html><body>Logged out</body></html>"
                 else:
@@ -399,6 +522,17 @@ def _deck_share_form() -> bytes:
       </form>
     </body></html>
     """
+
+
+def _public_deck_listing(title: str, description: str, image_sources: tuple[str, ...]) -> bytes:
+    images = "".join(f'<img src="{escape(source, quote=True)}">' for source in image_sources)
+    return (
+        "<html><body>"
+        f"<h1>{escape(title)}</h1>"
+        f'<div class="shared-item-description">{escape(description)}</div>'
+        f"{images}"
+        "</body></html>"
+    ).encode("utf-8")
 
 
 if __name__ == "__main__":

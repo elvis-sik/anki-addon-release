@@ -45,6 +45,23 @@ class BrowserHelperTests(unittest.TestCase):
             ),
         )
 
+    def test_description_markers_keep_heading_as_its_own_paragraph(self) -> None:
+        markers = _description_markers(
+            "Map cards.\n\n"
+            '<img src="https://assets.example/card.png">\n\n'
+            "## Edition and credit\n\n"
+            "Based on an earlier deck."
+        )
+
+        self.assertEqual(
+            markers,
+            (
+                "Map cards.",
+                "Edition and credit",
+                "Based on an earlier deck.",
+            ),
+        )
+
 
 @unittest.skipUnless(
     RUN_BROWSER_TESTS and playwright_available(),

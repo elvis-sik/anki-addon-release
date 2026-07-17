@@ -607,8 +607,10 @@ def _description_markers(markdown: str) -> tuple[str, ...]:
     without_images = _HTML_IMAGE_RE.sub("", _MARKDOWN_IMAGE_RE.sub("", markdown))
     visible_text = _MARKDOWN_LINK_RE.sub(r"\1", without_images)
     visible_text = re.sub(r"</?[^>]+>", "", visible_text)
-    visible_text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", visible_text)
-    visible_text = re.sub(r"(?m)^\s*(?:[-+*]|\d+[.)])\s+", "", visible_text)
+    # Limit indentation to spaces/tabs. ``\s`` would consume paragraph
+    # newlines before a heading or list item and silently merge markers.
+    visible_text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", visible_text)
+    visible_text = re.sub(r"(?m)^[ \t]*(?:[-+*]|\d+[.)])[ \t]+", "", visible_text)
     visible_text = re.sub(r"`([^`]*)`", r"\1", visible_text)
     visible_text = visible_text.replace("**", "").replace("__", "").replace("~~", "")
     return tuple(

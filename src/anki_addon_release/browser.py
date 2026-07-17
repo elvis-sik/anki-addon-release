@@ -178,12 +178,18 @@ class AnkiWebBrowser:
                         page,
                         timeout_ms=max(self.timeout_ms, _DECK_SHARE_COMPLETION_TIMEOUT_MS),
                     )
-                    final_url = _verify_deck_public_listing(
+                    owner_listing_url = _verify_deck_owner_listing(
                         page,
                         plan,
                         timeout_ms=max(self.timeout_ms, _DECK_PUBLIC_LISTING_TIMEOUT_MS),
                     )
-                    status = "submitted"
+                    public_listing_url = _verify_deck_public_listing(
+                        playwright,
+                        plan,
+                        timeout_ms=max(self.timeout_ms, _DECK_PUBLIC_LISTING_TIMEOUT_MS),
+                    )
+                    final_url = public_listing_url or owner_listing_url
+                    status = "submitted" if public_listing_url else "submitted-pending-public-review"
                 else:
                     status = "prepared"
                     final_url = page.url
@@ -465,8 +471,8 @@ def _wait_for_deck_share_completion(page: object, *, timeout_ms: int) -> None:
         raise PublishError(f"AnkiWeb did not complete the deck share{detail}") from exc
 
 
-def _verify_deck_public_listing(page: object, plan: DeckPublishPlan, *, timeout_ms: int) -> str:
-    """Require the public item page to reflect the submitted deck metadata."""
+def _verify_deck_owner_listing(page: object, plan: DeckPublishPlan, *, timeout_ms: int) -> str:
+    """Require the signed-in owner's item page to reflect submitted metadata."""
     if not plan.shared_id:
         raise PublishError("cannot verify a deck listing without ankiweb.shared_id")
 
@@ -503,9 +509,49 @@ def _verify_deck_public_listing(page: object, plan: DeckPublishPlan, *, timeout_
 
     detail = "; ".join(last_mismatches)
     raise PublishError(
-        "AnkiWeb share worker completed, but the public listing did not match the submitted metadata "
+        "AnkiWeb share worker completed, but the signed-in listing did not match the submitted metadata "
         f"within {timeout_ms / 1_000:g} seconds: {detail}"
     )
+
+
+def _verify_deck_public_listing(playwright: object, plan: DeckPublishPlan, *, timeout_ms: int) -> str | None:
+    """Verify a listing from a cookie-free browser, or report AnkiWeb's review hold."""
+    browser = None
+    context = None
+    try:
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        page.set_default_timeout(timeout_ms)
+
+        listing_url = urljoin(plan.base_url.rstrip("/") + "/", f"shared/info/{plan.shared_id}")
+        cache_busted_url = f"{listing_url}?cb={int(time() * 1_000)}"
+        page.goto(cache_busted_url, wait_until="domcontentloaded")
+        body = page.locator("body").inner_text(timeout=timeout_ms)
+        if "This shared item is missing or currently unavailable." in body:
+            return None
+
+        title, description, image_sources = _public_listing_snapshot(page)
+        mismatches = _public_listing_mismatches(
+            plan,
+            title=title,
+            description=description,
+            image_sources=image_sources,
+        )
+        if mismatches:
+            raise PublishError(
+                "AnkiWeb share worker completed, but the anonymous public listing did not match "
+                f"the submitted metadata: {'; '.join(mismatches)}"
+            )
+        return cache_busted_url
+    except PublishError:
+        raise
+    except Exception as exc:
+        raise PublishError("could not verify the anonymous public listing") from exc
+    finally:
+        _close_context(context)
+        if browser is not None:
+            browser.close()
 
 
 def _public_listing_snapshot(page: object) -> tuple[str, str, tuple[str, ...]]:

@@ -29,9 +29,11 @@ branch compatibility fields, and local browser-flow regression tests.
 Deck publishing supports public/private config splitting: public repos can hold
 the listing file, while `.anki-addon-release.local.toml` or `.env` holds the
 private Anki collection deck reference. A submitted deck release waits for
-AnkiWeb's worker, reloads the cache-busted public listing, and verifies the
-title, submitted description text, and expected screenshot image URLs before
-reporting success.
+AnkiWeb's worker, verifies the signed-in owner listing, then reloads the
+cache-busted listing in a cookie-free browser. It reports `submitted` only when
+the public title, description text, and expected screenshot image URLs match.
+During AnkiWeb's normal copyright-review hold, it reports
+`submitted-pending-public-review` instead of claiming public visibility.
 It is published on PyPI via Trusted Publishing.
 
 ## Install

@@ -268,6 +268,34 @@ class BrowserFlowTests(unittest.TestCase):
             self.assertEqual(result.status, "submitted")
             self.assertGreaterEqual(server.public_listing_get_count, 1)
 
+    def test_deck_share_reports_pending_public_review_when_owner_listing_is_ready(self) -> None:
+        with FakeAnkiWebServer(
+            public_listing_unavailable=True,
+            owner_listing_description="Fresh description",
+        ) as server, tempfile.TemporaryDirectory() as tmp:
+            plan = DeckPublishPlan(
+                base_url=server.url,
+                share_url=f"{server.url}/decks/share/1650000000000",
+                login_url=f"{server.url}/account/login",
+                source_deck_id="1650000000000",
+                shared_id="987654321",
+                title="Geography Deck",
+                tags=None,
+                support_url=None,
+                description="Fresh description",
+                submit=True,
+                copyright_confirmed=True,
+            )
+
+            result = AnkiWebBrowser(
+                profile_dir=Path(tmp) / "profile",
+                headless=True,
+                timeout_ms=10_000,
+            ).publish_deck(plan)
+
+            self.assertEqual(result.status, "submitted-pending-public-review")
+            self.assertTrue(result.final_url.startswith(f"{server.url}/shared/info/987654321?cb="))
+
     def test_deck_share_rejects_a_stale_public_listing(self) -> None:
         with FakeAnkiWebServer(public_listing_description="Previous description") as server, tempfile.TemporaryDirectory() as tmp:
             plan = DeckPublishPlan(
@@ -285,7 +313,7 @@ class BrowserFlowTests(unittest.TestCase):
             )
 
             with patch("anki_addon_release.browser._DECK_PUBLIC_LISTING_TIMEOUT_MS", 250):
-                with self.assertRaisesRegex(PublishError, "public listing did not match"):
+                with self.assertRaisesRegex(PublishError, "listing did not match"):
                     AnkiWebBrowser(
                         profile_dir=Path(tmp) / "profile",
                         headless=True,
@@ -351,6 +379,10 @@ class FakeAnkiWebServer:
         public_listing_title: str = "Geography Deck",
         public_listing_description: str = "Deck description",
         public_listing_image_sources: tuple[str, ...] = (),
+        owner_listing_title: str | None = None,
+        owner_listing_description: str | None = None,
+        owner_listing_image_sources: tuple[str, ...] | None = None,
+        public_listing_unavailable: bool = False,
     ) -> None:
         self.login_is_logged_in = login_is_logged_in
         self.keep_upload_form_after_post = keep_upload_form_after_post
@@ -358,6 +390,10 @@ class FakeAnkiWebServer:
         self.public_listing_title = public_listing_title
         self.public_listing_description = public_listing_description
         self.public_listing_image_sources = public_listing_image_sources
+        self.owner_listing_title = owner_listing_title or public_listing_title
+        self.owner_listing_description = owner_listing_description or public_listing_description
+        self.owner_listing_image_sources = owner_listing_image_sources or public_listing_image_sources
+        self.public_listing_unavailable = public_listing_unavailable
 
     def __enter__(self) -> FakeAnkiWebServer:
         self.last_post_path = ""
@@ -383,11 +419,20 @@ class FakeAnkiWebServer:
                     body = _deck_share_form()
                 elif path == "/shared/info/987654321":
                     owner.public_listing_get_count += 1
-                    body = _public_deck_listing(
-                        owner.public_listing_title,
-                        owner.public_listing_description,
-                        owner.public_listing_image_sources,
-                    )
+                    if "session=owner" in handler.headers.get("Cookie", ""):
+                        body = _public_deck_listing(
+                            owner.owner_listing_title,
+                            owner.owner_listing_description,
+                            owner.owner_listing_image_sources,
+                        )
+                    elif owner.public_listing_unavailable:
+                        body = _unavailable_shared_item_page()
+                    else:
+                        body = _public_deck_listing(
+                            owner.public_listing_title,
+                            owner.public_listing_description,
+                            owner.public_listing_image_sources,
+                        )
                 elif path == "/account/login":
                     owner.login_get_count += 1
                     if owner.login_is_logged_in and owner.login_get_count == 1:
@@ -401,6 +446,7 @@ class FakeAnkiWebServer:
                     body = b"<html><body><a href='/shared/addons/create'>Upload</a></body></html>"
                 handler.send_response(200)
                 handler.send_header("Content-Type", "text/html; charset=utf-8")
+                handler.send_header("Set-Cookie", "session=owner; Path=/")
                 handler.send_header("Content-Length", str(len(body)))
                 handler.end_headers()
                 handler.wfile.write(body)
@@ -533,6 +579,10 @@ def _public_deck_listing(title: str, description: str, image_sources: tuple[str,
         f"{images}"
         "</body></html>"
     ).encode("utf-8")
+
+
+def _unavailable_shared_item_page() -> bytes:
+    return b"<html><body>This shared item is missing or currently unavailable.</body></html>"
 
 
 if __name__ == "__main__":

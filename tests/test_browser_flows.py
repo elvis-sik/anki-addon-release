@@ -271,6 +271,7 @@ class BrowserFlowTests(unittest.TestCase):
     def test_deck_share_reports_pending_public_review_when_owner_listing_is_ready(self) -> None:
         with FakeAnkiWebServer(
             public_listing_unavailable=True,
+            public_listing_unavailable_delay_ms=100,
             owner_listing_description="Fresh description",
         ) as server, tempfile.TemporaryDirectory() as tmp:
             plan = DeckPublishPlan(
@@ -383,6 +384,7 @@ class FakeAnkiWebServer:
         owner_listing_description: str | None = None,
         owner_listing_image_sources: tuple[str, ...] | None = None,
         public_listing_unavailable: bool = False,
+        public_listing_unavailable_delay_ms: int = 0,
     ) -> None:
         self.login_is_logged_in = login_is_logged_in
         self.keep_upload_form_after_post = keep_upload_form_after_post
@@ -394,6 +396,7 @@ class FakeAnkiWebServer:
         self.owner_listing_description = owner_listing_description or public_listing_description
         self.owner_listing_image_sources = owner_listing_image_sources or public_listing_image_sources
         self.public_listing_unavailable = public_listing_unavailable
+        self.public_listing_unavailable_delay_ms = public_listing_unavailable_delay_ms
 
     def __enter__(self) -> FakeAnkiWebServer:
         self.last_post_path = ""
@@ -426,7 +429,9 @@ class FakeAnkiWebServer:
                             owner.owner_listing_image_sources,
                         )
                     elif owner.public_listing_unavailable:
-                        body = _unavailable_shared_item_page()
+                        body = _delayed_unavailable_shared_item_page(
+                            owner.public_listing_unavailable_delay_ms
+                        )
                     else:
                         body = _public_deck_listing(
                             owner.public_listing_title,
@@ -583,6 +588,18 @@ def _public_deck_listing(title: str, description: str, image_sources: tuple[str,
 
 def _unavailable_shared_item_page() -> bytes:
     return b"<html><body>This shared item is missing or currently unavailable.</body></html>"
+
+
+def _delayed_unavailable_shared_item_page(delay_ms: int) -> bytes:
+    if delay_ms <= 0:
+        return _unavailable_shared_item_page()
+    return f"""
+    <html><body><main></main><script>
+      setTimeout(() => {{
+        document.querySelector('main').innerText = 'This shared item is missing or currently unavailable.';
+      }}, {delay_ms});
+    </script></body></html>
+    """.encode("utf-8")
 
 
 if __name__ == "__main__":

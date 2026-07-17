@@ -15,6 +15,7 @@ from .publish import DeckPublishPlan, PublishPlan
 _DECK_SHARE_COMPLETION_TIMEOUT_MS = 90_000
 _DECK_PUBLIC_LISTING_TIMEOUT_MS = 90_000
 _DECK_PUBLIC_LISTING_POLL_MS = 1_000
+_SHARED_ITEM_UNAVAILABLE_TEXT = "This shared item is missing or currently unavailable."
 
 
 @dataclass(frozen=True)
@@ -527,8 +528,21 @@ def _verify_deck_public_listing(playwright: object, plan: DeckPublishPlan, *, ti
         listing_url = urljoin(plan.base_url.rstrip("/") + "/", f"shared/info/{plan.shared_id}")
         cache_busted_url = f"{listing_url}?cb={int(time() * 1_000)}"
         page.goto(cache_busted_url, wait_until="domcontentloaded")
+        # AnkiWeb's Svelte page may have an empty body immediately after DOM
+        # content loads. Wait for either the review-hold message or a listing
+        # heading before deciding which state the anonymous page represents.
+        page.wait_for_function(
+            f"""
+            () => {{
+                const body = document.body?.innerText || '';
+                return body.includes({_SHARED_ITEM_UNAVAILABLE_TEXT!r})
+                    || Boolean(document.querySelector('h1')?.innerText?.trim());
+            }}
+            """,
+            timeout=timeout_ms,
+        )
         body = page.locator("body").inner_text(timeout=timeout_ms)
-        if "This shared item is missing or currently unavailable." in body:
+        if _SHARED_ITEM_UNAVAILABLE_TEXT in body:
             return None
 
         title, description, image_sources = _public_listing_snapshot(page)

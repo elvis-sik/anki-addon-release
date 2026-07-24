@@ -113,7 +113,7 @@ class BrowserFlowTests(unittest.TestCase):
                 artifact_path=artifact,
                 addon_id=None,
                 title="Study Triage",
-                support_url="https://github.com/elvis-sik/study-triage",
+                support_url="https://github.com/ritornello-labs/study-triage",
                 description="Description text",
                 changelog="Initial upload",
                 submit=True,
@@ -131,7 +131,7 @@ class BrowserFlowTests(unittest.TestCase):
             self.assertEqual(server.last_post_path, "/shared/addons/create")
             self.assertIn(b"Study Triage", server.last_post_body)
             self.assertIn(
-                b"https://github.com/elvis-sik/study-triage",
+                b"https://github.com/ritornello-labs/study-triage",
                 server.last_post_body,
             )
             self.assertIn(b"2.1.55", server.last_post_body)

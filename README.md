@@ -1,7 +1,7 @@
 # anki-addon-release
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://pypi.org/project/anki-addon-release/)
-[![Source on GitHub](https://img.shields.io/badge/source-GitHub-24292f)](https://github.com/elvis-sik/anki-addon-release)
+[![Source on GitHub](https://img.shields.io/badge/source-GitHub-24292f)](https://github.com/ritornello-labs/anki-addon-release)
 
 `anki-addon-release` is a small release helper for Anki add-ons and shared decks.
 
@@ -53,7 +53,7 @@ uvx --from "anki-addon-release[browser]" anki-addon-release --help
 For unreleased changes on `main`, run directly from GitHub:
 
 ```bash
-uvx --from "anki-addon-release @ git+https://github.com/elvis-sik/anki-addon-release.git" \
+uvx --from "anki-addon-release @ git+https://github.com/ritornello-labs/anki-addon-release.git" \
   anki-addon-release --help
 ```
 
